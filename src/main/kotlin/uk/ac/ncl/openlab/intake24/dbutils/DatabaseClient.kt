@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory
 import java.sql.Connection
 import java.sql.SQLException
 
-abstract class DatabaseClient(databaseUrl: String, username: String, password: String?, val sqlDialect: SQLDialect) {
+class DatabaseClient(databaseUrl: String, username: String, password: String?, private val sqlDialect: SQLDialect) {
     private val logger = LoggerFactory.getLogger(DatabaseClient::class.java)
 
     val dataSource: HikariDataSource
@@ -32,7 +32,6 @@ abstract class DatabaseClient(databaseUrl: String, username: String, password: S
         } catch (rbe: SQLException) {
             logger.error("Transaction rollback attempt failed after database exception", rbe)
         }
-
     }
 
     fun runTransaction(transaction: (DSLContext) -> Unit) {
