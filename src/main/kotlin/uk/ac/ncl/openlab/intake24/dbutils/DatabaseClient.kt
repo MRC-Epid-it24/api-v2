@@ -34,34 +34,6 @@ class DatabaseClient(databaseUrl: String, username: String, password: String?, p
         }
     }
 
-    fun runTransaction(transaction: (DSLContext) -> Unit) {
-        try {
-            val connection = dataSource.getConnection()
-
-            try {
-                connection.setAutoCommit(false)
-                transaction(DSL.using(connection, sqlDialect))
-                connection.commit()
-            } catch (e: DataAccessException) {
-                tryRollback(connection)
-                throw DataAccessError(e)
-
-            } catch (e: Throwable) {
-                tryRollback(connection)
-                throw OtherError(e)
-            } finally {
-                try {
-                    connection.close()
-                } catch (e: SQLException) {
-                    logger.error("Failed to close a database connection", e)
-                }
-
-            }
-        } catch (e: SQLException) {
-            throw OtherError(e)
-        }
-    }
-
     fun <T> runTransaction(transaction: (DSLContext) -> T): T {
         try {
             val connection = dataSource.getConnection()

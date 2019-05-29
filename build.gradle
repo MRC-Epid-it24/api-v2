@@ -11,6 +11,7 @@ repositories {
 ext {
     ktor_version = "1.2.0"
     slf4j_version = "1.7.26"
+    http4k_version = "3.146.0"
 }
 
 dependencies {
@@ -18,6 +19,11 @@ dependencies {
     implementation("io.ktor:ktor-server-netty:$ktor_version")
     implementation("io.ktor:ktor-jackson:$ktor_version")
     implementation "io.ktor:ktor-auth-jwt:$ktor_version"
+
+    implementation("org.http4k:http4k-core:$http4k_version")
+    implementation("org.http4k:http4k-server-netty:$http4k_version")
+
+    implementation("com.auth0:java-jwt:3.8.1")
 
     implementation("org.postgresql:postgresql:42.2.5")
 

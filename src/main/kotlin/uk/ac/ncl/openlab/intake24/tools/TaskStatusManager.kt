@@ -21,7 +21,6 @@ sealed class CompletionStatus {
 }
 
 class TaskStatusManager {
-
     private val counter = AtomicInteger(0)
     private val tasks = ConcurrentHashMap<Int, CompletionStatus>()
 

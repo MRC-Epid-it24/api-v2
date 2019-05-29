@@ -2,13 +2,11 @@ package uk.ac.ncl.openlab.intake24.tools
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
-import io.ktor.application.ApplicationCall
 import io.ktor.application.call
 import io.ktor.application.install
 import io.ktor.auth.Authentication
 import io.ktor.auth.authenticate
 import io.ktor.auth.authentication
-import io.ktor.auth.jwt.JWTPrincipal
 import io.ktor.auth.jwt.jwt
 import io.ktor.features.ContentNegotiation
 import io.ktor.http.HttpStatusCode
@@ -17,13 +15,10 @@ import io.ktor.jackson.jackson
 import io.ktor.request.header
 import io.ktor.request.receiveOrNull
 import io.ktor.response.respond
-import io.ktor.routing.get
-import io.ktor.routing.post
-import io.ktor.routing.routing
+import io.ktor.routing.*
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
-import io.ktor.util.pipeline.PipelineContext
-import io.ktor.util.pipeline.PipelineInterceptor
+import io.ktor.util.pipeline.PipelinePhase
 import org.jooq.SQLDialect
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 
@@ -31,10 +26,33 @@ data class FoodFrequencyRequest(val surveys: List<String>)
 
 data class FoodFrequencyAcceptedResponse(val taskId: Int)
 
+class AuthorizeRouteSelector() : RouteSelector(RouteSelectorEvaluation.qualityConstant) {
+    override fun evaluate(context: RoutingResolveContext, segmentIndex: Int): RouteSelectorEvaluation {
+        return RouteSelectorEvaluation.Constant
+    }
 
-fun restrictToRoles(roles: List<String>, body: PipelineContext<Unit, ApplicationCall>): PipelineContext<Unit, ApplicationCall> {
+    override fun toString(): String = "authorize"
+}
 
+val authorizePhase = PipelinePhase("Authorization")
 
+fun Route.restrictTo(
+        roles: List<String>,
+        build: Route.() -> Unit
+): Route {
+    val authorizedRoute = createChild(AuthorizeRouteSelector())
+
+//    authorizedRoute.intercept()
+
+    authorizedRoute.addPhase(authorizePhase)
+    authorizedRoute.intercept(authorizePhase) {
+        println("Kabzon!" + (call.authentication.principal<Intake24User>()!!.roles))
+        proceed()
+    }
+
+    authorizedRoute.build()
+
+    return authorizedRoute
 }
 
 fun main() {
@@ -53,6 +71,7 @@ fun main() {
         install(ContentNegotiation) {
             jackson()
         }
+//        Authentication.Feature.
 
         install(Authentication) {
             val algorithm = Algorithm.HMAC256("zV;3:xvweW]@G5JTK7j;At<;pSj:NM=g[ALNpj?[NiWoUu3jK;K@s^a/LPf8S:5K")
@@ -70,7 +89,7 @@ fun main() {
                 }
 
                 validate { credential ->
-                    Intake24Principal.fromJWTPayload(credential.payload)
+                    Intake24User.fromJWTPayload(credential.payload)
                 }
             }
         }
@@ -79,18 +98,15 @@ fun main() {
 
             authenticate("intake24") {
 
+                restrictTo(listOf("talpaop")) {
+                    post("/food-frequency") {
 
-                post("/food-frequency") {
+                        val request = call.receiveOrNull(FoodFrequencyRequest::class)
 
-                    val principal = call.authentication.principal<Intake24Principal>()
+                        val taskId = foodFrequencyStatsService.exportFoodFrequency(request?.surveys ?: emptyList())
+                        call.respond(HttpStatusCode.Accepted, FoodFrequencyAcceptedResponse(taskId))
 
-                    println("User ID ${principal.userId}: ${principal.roles}")
-
-                    val request = call.receiveOrNull(FoodFrequencyRequest::class)
-
-                    val taskId = foodFrequencyStatsService.exportFoodFrequency(request?.surveys ?: emptyList())
-                    call.respond(HttpStatusCode.Accepted, FoodFrequencyAcceptedResponse(taskId))
-
+                    }
                 }
 
                 get("/tasks/{id}/status") {
