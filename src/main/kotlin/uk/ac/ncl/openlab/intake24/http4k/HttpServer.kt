@@ -1,9 +1,6 @@
 package uk.ac.ncl.openlab.intake24.http4k
 
-import org.http4k.core.HttpHandler
-import org.http4k.core.Method
-import org.http4k.core.Request
-import org.http4k.core.Response
+import org.http4k.core.*
 import org.http4k.core.Status.Companion.OK
 import org.http4k.routing.bind
 import org.http4k.routing.path
@@ -11,6 +8,7 @@ import org.http4k.routing.routes
 import org.http4k.server.Netty
 import org.http4k.server.asServer
 import org.jooq.SQLDialect
+import uk.ac.ncl.openlab.intake24.FoodsCache
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.FoodFrequencyStatsService
 
@@ -31,13 +29,30 @@ class ExportController(val foodFrequencyStatsService: FoodFrequencyStatsService)
     fun exportFrequencies(user: Intake24User, request: Request): Response {
         val id = foodFrequencyStatsService.exportFoodFrequency("en_GB", emptyList())
 
-        Response()
-
+        return Response(OK).body(id.toString())
     }
 }
 
+class TaskStatusController(val taskStatusManager: TaskStatusManager) {
+    fun getTaskStatus(id: Int): (Intake24User, Request) -> Response = { user, request ->
+        val status = taskStatusManager.getTaskStatus(id)
+
+        if (status == null)
+            Response(Status.NOT_FOUND)
+        else
+            Response(OK).body("bzoqozon")
+    }
+}
+
+
 fun main() {
     val systemDatabase = DatabaseClient(
+            "jdbc:postgresql://192.168.56.2:5432/intake24_system",
+            "intake24",
+            "intake24", SQLDialect.POSTGRES_9_5)
+
+
+    val foodsDatabase = DatabaseClient(
             "jdbc:postgresql://192.168.56.2:5432/intake24_foods",
             "intake24",
             "intake24", SQLDialect.POSTGRES_9_5)
@@ -46,13 +61,16 @@ fun main() {
 
     val taskStatusManager = TaskStatusManager()
 
-    val foodFrequencyStatsService = FoodFrequencyStatsService(systemDatabase, taskStatusManager)
+    val foodsCache = FoodsCache(foodsDatabase)
+
+    val foodFrequencyStatsService = FoodFrequencyStatsService(systemDatabase, foodsCache, taskStatusManager)
+
+    val exportController = ExportController(foodFrequencyStatsService)
 
     val router = routes(
 
-            "/foods/frequencies" bind Method.POST to
-
-                    "/ping" bind Method.GET to ::pong,
+            "/foods/frequencies" bind Method.POST to authenticate(restrictToRoles(listOf("superuser"), exportController::exportFrequencies)),
+            "/tasks/{id}/status" bind Method.GET to ::pong,
             "/whoami" bind Method.GET to authenticate(restrictToRoles(listOf("zorboz"), ::whoami)),
             "/greet/{name}" bind Method.GET to { req: Request ->
                 val path: String? = req.path("name")

@@ -3,12 +3,29 @@ package uk.ac.ncl.openlab.intake24.http4k
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.exceptions.*
+import com.auth0.jwt.interfaces.Payload
 import org.http4k.core.HttpHandler
 import org.http4k.core.Request
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.slf4j.LoggerFactory
-import uk.ac.ncl.openlab.intake24.tools.Intake24User
+
+
+data class Intake24User(val userId: Int, val roles: List<String>) {
+    companion object {
+        fun fromJWTPayload(payload: Payload): Intake24User {
+
+            val userId = payload.claims["userId"]!!.asInt()
+            val jwtRoles = payload.claims["roles"]!!.asList(java.lang.String::class.java)
+
+            val ktRoles = jwtRoles.fold(emptyList<String>()) { acc, next ->
+                acc.plus(next as String)
+            }
+
+            return Intake24User(userId, ktRoles)
+        }
+    }
+}
 
 typealias AuthenticatedHttpHandler = (Intake24User, Request) -> Response
 

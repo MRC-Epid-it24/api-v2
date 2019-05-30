@@ -1,18 +1,25 @@
 package uk.ac.ncl.openlab.intake24.tools
 
+import com.opencsv.CSVWriter
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
+import uk.ac.ncl.openlab.intake24.FoodsCache
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ncl.ac.uk.intake24.systemsql.Tables.*
+import java.io.FileWriter
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.math.max
 
-class FoodFrequencyStatsService(val systemDatabase: DatabaseClient, private val taskStatusManager: TaskStatusManager) {
+class FoodFrequencyStatsService(val systemDatabase: DatabaseClient,
+                                val foodsCache: FoodsCache,
+                                private val taskStatusManager: TaskStatusManager) {
 
     val foodBatchSize = 1000
 
     private data class FrequenciesBatch(val frequencies: Map<String, Int>, val lastId: Int)
 
-    private suspend fun getNextBatch(locale: String, limitToSurveys: List<String>, startAfter: Int): FrequenciesBatch {
+    private fun getNextBatch(locale: String, limitToSurveys: List<String>, startAfter: Int): FrequenciesBatch {
         return systemDatabase.runTransaction { context ->
             val condition1 = SURVEYS.LOCALE.eq(locale).and(SURVEY_SUBMISSION_FOODS.ID.gt(startAfter))
 
@@ -59,17 +66,32 @@ class FoodFrequencyStatsService(val systemDatabase: DatabaseClient, private val 
             getFrequencies(locale, limitToSurveys, nextBatch.lastId, add(acc, nextBatch.frequencies))
     }
 
+    suspend fun writeFile(locale: String, frequencies: Map<String, Int>): Path {
+
+        val result = Files.createTempFile("intake24", ".csv")
+        val writer = CSVWriter(FileWriter(result.toFile()))
+
+        writer.writeNext(arrayOf("Food code", "English description", "Local description", "Times reported"))
+
+        foodsCache.getIndexableFoods(locale).sortedBy { it.code }.forEach { food ->
+            writer.writeNext(arrayOf(food.code, food.englishDescription, food.description, (frequencies[food.code]
+                    ?: 0).toString()))
+        }
+
+        writer.close()
+
+        return result
+    }
+
 
     fun exportFoodFrequency(locale: String, limitSurveyIds: List<String>): Int {
         val id = taskStatusManager.registerNewTask()
 
         GlobalScope.async {
 
-            val frequencies = getFrequencies(locale, limitSurveyIds)
+            val file = writeFile(locale, getFrequencies(locale, limitSurveyIds))
 
-            println(frequencies)
-
-            taskStatusManager.updateTask(id, CompletionStatus.Finished(null))
+            taskStatusManager.updateTask(id, CompletionStatus.Finished(file))
         }
 
         return id
