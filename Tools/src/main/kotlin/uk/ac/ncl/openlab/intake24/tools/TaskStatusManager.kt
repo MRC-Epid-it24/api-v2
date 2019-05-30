@@ -1,5 +1,9 @@
 package uk.ac.ncl.openlab.intake24.tools
 
+import com.google.inject.Inject
+import com.google.inject.Singleton
+import uk.ac.ncl.intake24.storage.SharedStorage
+import uk.ac.ncl.intake24.storage.SharedStorageWithSerializer
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -18,9 +22,9 @@ sealed class CompletionStatus {
     class Failed(val cause: Throwable) : CompletionStatus()
 }
 
-class TaskStatusManager {
-    private val counter = AtomicInteger(0)
-    private val tasks = ConcurrentHashMap<Int, CompletionStatus>()
+
+@Singleton
+class TaskStatusManager @Inject() constructor(sharedStorage: SharedStorageWithSerializer) {
 
     fun registerNewTask(): Int {
         val id = counter.getAndIncrement()

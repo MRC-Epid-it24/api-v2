@@ -1,5 +1,10 @@
 package uk.ac.ncl.openlab.intake24.http4k
 
+import com.google.inject.AbstractModule
+import com.google.inject.Guice
+import com.google.inject.Module
+import com.google.inject.name.Names
+import com.typesafe.config.Config
 import org.http4k.core.*
 import org.http4k.core.Status.Companion.OK
 import org.http4k.routing.bind
@@ -8,12 +13,14 @@ import org.http4k.routing.routes
 import org.http4k.server.Netty
 import org.http4k.server.asServer
 import org.jooq.SQLDialect
+import uk.ac.ncl.intake24.storage.SharedStorage
 import uk.ac.ncl.openlab.intake24.FoodsCache
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.FoodFrequencyStatsService
 
-import uk.ac.ncl.openlab.intake24.tools.Intake24User
 import uk.ac.ncl.openlab.intake24.tools.TaskStatusManager
+import com.typesafe.config.ConfigFactory
+import javax.inject.Named
 
 
 fun pong(request: Request): Response {
@@ -46,18 +53,36 @@ class TaskStatusController(val taskStatusManager: TaskStatusManager) {
 
 
 fun main() {
-    val systemDatabase = DatabaseClient(
-            "jdbc:postgresql://192.168.56.2:5432/intake24_system",
-            "intake24",
-            "intake24", SQLDialect.POSTGRES_9_5)
 
+    val config = ConfigFactory.load()
+
+    val systemDatabase = DatabaseClient(
+            config.getString("db.system.url"),
+            config.getString("db.system.user"),
+            config.getString("db.system.password"),
+            SQLDialect.POSTGRES_9_5)
 
     val foodsDatabase = DatabaseClient(
-            "jdbc:postgresql://192.168.56.2:5432/intake24_foods",
-            "intake24",
-            "intake24", SQLDialect.POSTGRES_9_5)
+            config.getString("db.foods.url"),
+            config.getString("db.foods.user"),
+            config.getString("db.foods.password"),
+            SQLDialect.POSTGRES_9_5)
 
-    val authenticate = Intake24AuthHandler("zV;3:xvweW]@G5JTK7j;At<;pSj:NM=g[ALNpj?[NiWoUu3jK;K@s^a/LPf8S:5K")
+    val coreModule = object : AbstractModule() {
+        override fun configure() {
+            bind(Config::class.java).toInstance(config)
+            bind(DatabaseClient::class.java).annotatedWith(Names.named("system")).toInstance(systemDatabase)
+            bind(DatabaseClient::class.java).annotatedWith(Names.named("foods")).toInstance(foodsDatabase)
+        }
+    }
+
+    val modules = config.getStringList("modules").map { moduleName ->
+        Class.forName(moduleName) as Module
+    }
+
+    val injector = Guice.createInjector(modules + coreModule)
+
+    val authenticate = Intake24AuthHandler(config.getString("authentication.jwtSecret"))
 
     val taskStatusManager = TaskStatusManager()
 

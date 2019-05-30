@@ -1,0 +1,11 @@
+rootProject.name = "intake24-tools"
+
+include "SharedStorageAPI"
+include "SharedStorageSimple"
+include "SharedStorageUtils"
+
+include "SerializationAPI"
+include "JacksonCodec"
+
+// include "FileStorage"
+include "Tools"

@@ -1,0 +1,6 @@
+version = "1.0"
+
+dependencies {
+    api(project(":SharedStorageAPI"))
+    api(project(":SerializationAPI"))
+}
