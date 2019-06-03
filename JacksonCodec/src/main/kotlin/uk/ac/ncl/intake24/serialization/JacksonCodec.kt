@@ -1,8 +1,10 @@
 package uk.ac.ncl.intake24.serialization
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.google.inject.Singleton
 import kotlin.reflect.KClass
 
+@Singleton
 class JacksonCodec : StringCodec {
     private val mapper = ObjectMapper()
 

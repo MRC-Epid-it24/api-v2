@@ -7,5 +7,7 @@ include "SharedStorageUtils"
 include "SerializationAPI"
 include "JacksonCodec"
 
-// include "FileStorage"
+include "SecureURLAPI"
+include "LocalSecureURL"
+
 include "Tools"

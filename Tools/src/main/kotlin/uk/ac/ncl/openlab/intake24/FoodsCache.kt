@@ -1,5 +1,8 @@
 package uk.ac.ncl.openlab.intake24
 
+import com.google.inject.Inject
+import com.google.inject.Singleton
+import com.google.inject.name.Named
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ncl.ac.uk.intake24.foodsql.Tables.*
 import uk.ncl.ac.uk.intake24.foodsql.tables.pojos.Foods
@@ -15,7 +18,8 @@ data class Food(val code: String, val description: String, val foodGroupId: Int,
 
 data class LocalFoodHeader(val code: String, val englishDescription: String, val description: String)
 
-class FoodsCache(foodsDatabase: DatabaseClient) {
+@Singleton
+class FoodsCache @Inject() constructor(@Named("foods") private val foodsDatabase: DatabaseClient) {
 
     val foods: List<Food>
 

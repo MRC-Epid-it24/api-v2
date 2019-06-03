@@ -1,21 +1,30 @@
 package uk.ac.ncl.openlab.intake24.tools
 
+import com.google.inject.Inject
+import com.google.inject.Singleton
+import com.google.inject.name.Named
 import com.opencsv.CSVWriter
+import com.typesafe.config.Config
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
+import uk.ac.ncl.intake24.secureurl.SecureURLService
 import uk.ac.ncl.openlab.intake24.FoodsCache
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ncl.ac.uk.intake24.systemsql.Tables.*
 import java.io.FileWriter
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.LocalDate
 import kotlin.math.max
 
-class FoodFrequencyStatsService(val systemDatabase: DatabaseClient,
-                                val foodsCache: FoodsCache,
-                                private val taskStatusManager: TaskStatusManager) {
+@Singleton
+class FoodFrequencyStatsService @Inject() constructor(@Named("system") val systemDatabase: DatabaseClient,
+                                                      private val foodsCache: FoodsCache,
+                                                      private val config: Config,
+                                                      private val secureURLService: SecureURLService,
+                                                      private val taskStatusManager: TaskStatusManager) {
 
-    val foodBatchSize = 1000
+    private val foodBatchSize: Int = config.getInt("services.foodFrequency.batchSize")
 
     private data class FrequenciesBatch(val frequencies: Map<String, Int>, val lastId: Int)
 
@@ -55,8 +64,8 @@ class FoodFrequencyStatsService(val systemDatabase: DatabaseClient,
         }
     }
 
-    suspend fun getFrequencies(locale: String, limitToSurveys: List<String>, startAfter: Int = 0,
-                               acc: Map<String, Int> = emptyMap()): Map<String, Int> {
+    private suspend fun getFrequencies(locale: String, limitToSurveys: List<String>, startAfter: Int = 0,
+                                       acc: Map<String, Int> = emptyMap()): Map<String, Int> {
 
         val nextBatch = getNextBatch(locale, limitToSurveys, startAfter)
 
@@ -66,7 +75,7 @@ class FoodFrequencyStatsService(val systemDatabase: DatabaseClient,
             getFrequencies(locale, limitToSurveys, nextBatch.lastId, add(acc, nextBatch.frequencies))
     }
 
-    suspend fun writeFile(locale: String, frequencies: Map<String, Int>): Path {
+    private fun writeFile(locale: String, frequencies: Map<String, Int>): Path {
 
         val result = Files.createTempFile("intake24", ".csv")
         val writer = CSVWriter(FileWriter(result.toFile()))
@@ -84,14 +93,18 @@ class FoodFrequencyStatsService(val systemDatabase: DatabaseClient,
     }
 
 
-    fun exportFoodFrequency(locale: String, limitSurveyIds: List<String>): Int {
+    fun exportFoodFrequency(locale: String, limitSurveyIds: List<String>): String {
         val id = taskStatusManager.registerNewTask()
 
         GlobalScope.async {
 
             val file = writeFile(locale, getFrequencies(locale, limitSurveyIds))
 
-            taskStatusManager.updateTask(id, CompletionStatus.Finished(file))
+            val date = LocalDate.now()
+
+            val url = secureURLService.createURL("intake24-food-frequencies-$locale-${date.dayOfMonth}-${date.monthValue}-${date.year}.csv", file)
+
+            taskStatusManager.updateTask(id, CompletionStatus.Finished(url.toString()))
         }
 
         return id

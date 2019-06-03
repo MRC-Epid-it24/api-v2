@@ -8,11 +8,11 @@ import java.time.Duration
 @Singleton
 class SharedStorageWithSerializer @Inject constructor(val sharedStorage: SharedStorage, val stringCodec: StringCodec) {
 
-    fun <T> put(key: String, data: T, validFor: Duration): Unit {
+    fun <T> put(key: String, data: T, validFor: Duration) {
         sharedStorage.put(key, stringCodec.encode(data), validFor)
     }
 
-    fun remove(key: String): Unit {
+    fun remove(key: String) {
         sharedStorage.remove(key)
     }
 
