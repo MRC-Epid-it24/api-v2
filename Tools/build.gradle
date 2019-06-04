@@ -1,6 +1,7 @@
 plugins {
     id("nu.studer.jooq").version("3.0.3")
-    id "application"
+    id("com.github.johnrengelman.shadow").version("5.0.0")
+    id("application")
 }
 
 ext {
@@ -103,7 +104,10 @@ jooq {
 }
 
 application {
-    mainClassName = "uk.ac.ncl.openlab.intake24.tools.AppKt"
+    mainClassName = "uk.ac.ncl.openlab.intake24.http4k.HttpServerKt"
 }
 
-
+shadowJar {
+    archiveBaseName = "intake24-tools2"
+    version = "1.0.0"
+}
