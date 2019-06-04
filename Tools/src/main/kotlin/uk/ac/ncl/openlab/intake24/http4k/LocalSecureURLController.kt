@@ -32,7 +32,6 @@ class LocalSecureURLController @Inject constructor(private val config: Config) {
                         .header("Content-Disposition", "attachment; filename=\"$clientName\"")
                         .body(FileInputStream(file.toFile()))
             }
-
         }
     }
 }
