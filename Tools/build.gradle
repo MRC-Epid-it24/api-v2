@@ -30,7 +30,7 @@ dependencies {
 
     implementation("org.postgresql:postgresql:42.2.5")
 
-    implementation("org.slf4j:slf4j-simple:$slf4j_version")
+    implementation("ch.qos.logback:logback-classic:1.2.3")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit")
