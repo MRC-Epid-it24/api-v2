@@ -5,4 +5,5 @@ dependencies {
 
     api("com.fasterxml.jackson.core:jackson-core:2.9.9")
     api("com.fasterxml.jackson.core:jackson-databind:2.9.9")
+    api("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.9.9")
 }
