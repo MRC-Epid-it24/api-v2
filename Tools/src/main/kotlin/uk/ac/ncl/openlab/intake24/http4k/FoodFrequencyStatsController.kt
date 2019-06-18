@@ -21,8 +21,8 @@ class FoodFrequencyStatsController @Inject constructor(private val foodFrequency
 
         try {
             val params = stringCodec.decode(request.bodyString(), Req::class)
-            val id = foodFrequencyStatsService.exportFoodFrequency(params.locale, params.limitToSurveys ?: emptyList())
-            return Response(Status.OK).body(id)
+            val id = foodFrequencyStatsService.exportFoodFrequency(user.userId, params.locale, params.limitToSurveys ?: emptyList())
+            return Response(Status.ACCEPTED).body(id.toString())
         } catch (e: Exception) {
             logger.debug("Failed to decode body", e)
             return Response(Status.BAD_REQUEST).body(e.message ?: "")

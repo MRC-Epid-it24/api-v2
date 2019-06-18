@@ -25,6 +25,7 @@ import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.TaskStatusManager
 import java.net.InetSocketAddress
+import java.time.OffsetDateTime
 
 data class NettyConfig(val host: String, val port: Int) : ServerConfig {
     override fun toServer(httpHandler: HttpHandler): Http4kServer = object : Http4kServer {
@@ -65,18 +66,18 @@ data class NettyConfig(val host: String, val port: Int) : ServerConfig {
 class TaskStatusController @Inject() constructor(private val taskStatusManager: TaskStatusManager,
                                                  private val stringCodec: StringCodec) {
 
-    fun getTaskStatus(user: Intake24User, request: Request): Response {
-        val id = request.path("id")
+    fun getTasksList(user: Intake24User, request: Request): Response {
+        val type = request.query("type")
 
-        if (id == null) {
-            return Response(Status.BAD_REQUEST)
-        } else {
-            val status = taskStatusManager.getTaskStatus(id)
+        return if (type == null)
+            Response(Status.BAD_REQUEST).body("\"type\" query parameter missing")
+        else {
+            val responseBody =
+                    stringCodec.encode(taskStatusManager.getTaskList(user.userId, type, OffsetDateTime.now().minusDays(1)))
 
-            if (status == null)
-                return Response(Status.NOT_FOUND)
-            else
-                return Response(Status.OK).body(stringCodec.encode(status))
+            Response(Status.OK)
+                    .header("Content-Type", "application/json")
+                    .body(responseBody)
         }
     }
 }
@@ -121,7 +122,7 @@ fun main() {
 
     val router = routes(
             "/foods/frequencies" bind Method.POST to authenticate(restrictToRoles(listOf("superuser"), exportController::exportFrequencies)),
-            "/tasks/{id}/status" bind Method.GET to authenticate(taskStatusController::getTaskStatus),
+            "/tasks" bind Method.GET to authenticate(taskStatusController::getTasksList),
             "/files/download" bind Method.GET to fileDownloadController::download
     )
 

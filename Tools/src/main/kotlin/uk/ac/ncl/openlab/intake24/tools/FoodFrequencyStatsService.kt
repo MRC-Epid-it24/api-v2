@@ -15,6 +15,7 @@ import java.io.FileWriter
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import kotlin.math.max
 
 @Singleton
@@ -23,6 +24,10 @@ class FoodFrequencyStatsService @Inject() constructor(@Named("system") val syste
                                                       private val config: Config,
                                                       private val secureURLService: SecureURLService,
                                                       private val taskStatusManager: TaskStatusManager) {
+
+    companion object {
+        val TASK_TYPE = "food-frequency"
+    }
 
     private val foodBatchSize: Int = config.getInt("services.foodFrequency.batchSize")
 
@@ -93,18 +98,25 @@ class FoodFrequencyStatsService @Inject() constructor(@Named("system") val syste
     }
 
 
-    fun exportFoodFrequency(locale: String, limitSurveyIds: List<String>): String {
-        val id = taskStatusManager.registerNewTask()
+    fun exportFoodFrequency(ownerId: Int, locale: String, limitSurveyIds: List<String>): Int {
+        val id = taskStatusManager.createTask(ownerId, TASK_TYPE)
 
         GlobalScope.async {
 
-            val file = writeFile(locale, getFrequencies(locale, limitSurveyIds))
+            try {
 
-            val date = LocalDate.now()
+                taskStatusManager.setStarted(id)
 
-            val url = secureURLService.createURL("intake24-food-frequencies-$locale-${date.dayOfMonth}-${date.monthValue}-${date.year}.csv", file)
+                val file = writeFile(locale, getFrequencies(locale, limitSurveyIds))
 
-            taskStatusManager.updateTask(id, CompletionStatus.Finished(url.toString()))
+                val date = LocalDate.now()
+
+                val url = secureURLService.createURL("intake24-food-frequencies-$locale-${date.dayOfMonth}-${date.monthValue}-${date.year}.csv", file)
+
+                taskStatusManager.setSuccessful(id, Download(url.toString(), OffsetDateTime.now().plusHours(2)))
+            } catch (e: Exception) {
+                taskStatusManager.setFailed(id, e)
+            }
         }
 
         return id
