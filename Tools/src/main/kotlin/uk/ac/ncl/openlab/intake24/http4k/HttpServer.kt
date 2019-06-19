@@ -122,9 +122,12 @@ fun main() {
 
     val fileDownloadController = injector.getInstance(LocalSecureURLController::class.java)
 
+    val fctController = injector.getInstance(FoodCompositionTableController::class.java)
+
     val router = routes(
             "/foods/frequencies" bind Method.POST to authenticate(restrictToRoles(listOf("superuser"), exportController::exportFrequencies)),
             "/tasks" bind Method.GET to authenticate(taskStatusController::getTasksList),
+            "/foods/composition" bind Method.GET to authenticate(fctController::getCompositionTables),
             "/files/download" bind Method.GET to fileDownloadController::download
     )
 
