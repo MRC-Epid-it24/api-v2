@@ -19,7 +19,7 @@ import java.time.OffsetDateTime
 )
 sealed class CompletionStatus {
     object Pending : CompletionStatus()
-    class InProgress(@JsonProperty("progress") val progress: Float) : CompletionStatus()
+    class InProgress(@JsonProperty("progress") val progress: Float?) : CompletionStatus()
     class Finished(@JsonProperty("download") val download: Download?) : CompletionStatus()
     class Failed(@JsonProperty("reason") val reason: String) : CompletionStatus()
 }
@@ -44,7 +44,6 @@ class TaskStatusManager @Inject() constructor(@Named("system") val systemDatabas
     fun setStarted(taskId: Int) {
         systemDatabase.runTransaction {
             it.update(Tables.TOOLS_TASKS)
-                    .set(Tables.TOOLS_TASKS.PROGRESS, 0.0f)
                     .set(Tables.TOOLS_TASKS.STARTED_AT, OffsetDateTime.now())
                     .where(Tables.TOOLS_TASKS.ID.eq(taskId))
                     .execute()
@@ -108,14 +107,14 @@ class TaskStatusManager @Inject() constructor(@Named("system") val systemDatabas
 
     fun getTaskList(ownerId: Int, type: String, since: OffsetDateTime): List<TaskInfo> {
         val rows = systemDatabase.runTransaction {
-            it.select(Tables.TOOLS_TASKS.ID, Tables.TOOLS_TASKS.CREATED_AT, Tables.TOOLS_TASKS.COMPLETED_AT, Tables.TOOLS_TASKS.DOWNLOAD_URL,
-                    Tables.TOOLS_TASKS.DOWNLOAD_URL_EXPIRES_AT, Tables.TOOLS_TASKS.PROGRESS, Tables.TOOLS_TASKS.SUCCESSFUL,
-                    Tables.TOOLS_TASKS.STACK_TRACE)
+            it.select(Tables.TOOLS_TASKS.ID, Tables.TOOLS_TASKS.CREATED_AT, Tables.TOOLS_TASKS.STARTED_AT,
+                    Tables.TOOLS_TASKS.COMPLETED_AT, Tables.TOOLS_TASKS.DOWNLOAD_URL, Tables.TOOLS_TASKS.DOWNLOAD_URL_EXPIRES_AT,
+                    Tables.TOOLS_TASKS.PROGRESS, Tables.TOOLS_TASKS.SUCCESSFUL, Tables.TOOLS_TASKS.STACK_TRACE)
                     .from(Tables.TOOLS_TASKS)
                     .where(Tables.TOOLS_TASKS.USER_ID.eq(ownerId)
                             .and(Tables.TOOLS_TASKS.TYPE.eq(type))
                             .and(Tables.TOOLS_TASKS.CREATED_AT.ge(since)))
-                    .orderBy(Tables.TOOLS_TASKS.CREATED_AT)
+                    .orderBy(Tables.TOOLS_TASKS.CREATED_AT.desc())
                     .fetchArray()
         }
 
@@ -136,7 +135,7 @@ class TaskStatusManager @Inject() constructor(@Named("system") val systemDatabas
                     CompletionStatus.Failed(it[Tables.TOOLS_TASKS.STACK_TRACE] ?: "")
                 }
             } else {
-                if (it[Tables.TOOLS_TASKS.PROGRESS] != null) {
+                if (it[Tables.TOOLS_TASKS.STARTED_AT] != null) {
                     CompletionStatus.InProgress(it[Tables.TOOLS_TASKS.PROGRESS])
                 } else {
                     CompletionStatus.Pending

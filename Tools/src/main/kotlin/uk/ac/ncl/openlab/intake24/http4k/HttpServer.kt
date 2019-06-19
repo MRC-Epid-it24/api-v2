@@ -15,6 +15,8 @@ import io.netty.channel.socket.nio.NioServerSocketChannel
 import io.netty.handler.codec.http.HttpObjectAggregator
 import io.netty.handler.codec.http.HttpServerCodec
 import org.http4k.core.*
+import org.http4k.filter.CorsPolicy
+import org.http4k.filter.ServerFilters
 import org.http4k.routing.bind
 import org.http4k.routing.path
 import org.http4k.routing.routes
@@ -126,8 +128,12 @@ fun main() {
             "/files/download" bind Method.GET to fileDownloadController::download
     )
 
+    val corsPolicy = CorsPolicy(listOf("*"), listOf("X-Auth-Token", "Content-Type"), Method.values().toList())
+
+    val app = ServerFilters.Cors(corsPolicy).then(router)
+
     val host = config.getString("http.host")
     val port = config.getInt("http.port")
 
-    router.asServer(NettyConfig(host, port)).start()
+    app.asServer(NettyConfig(host, port)).start()
 }

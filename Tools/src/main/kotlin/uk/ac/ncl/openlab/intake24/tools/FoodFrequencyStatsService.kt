@@ -26,7 +26,7 @@ class FoodFrequencyStatsService @Inject() constructor(@Named("system") val syste
                                                       private val taskStatusManager: TaskStatusManager) {
 
     companion object {
-        val TASK_TYPE = "food-frequency"
+        const val TASK_TYPE = "food-frequency"
     }
 
     private val foodBatchSize: Int = config.getInt("services.foodFrequency.batchSize")
