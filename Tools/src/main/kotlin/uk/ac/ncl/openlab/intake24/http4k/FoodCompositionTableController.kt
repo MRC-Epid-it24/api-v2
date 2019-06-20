@@ -4,6 +4,7 @@ import com.google.inject.Inject
 import org.http4k.core.Request
 import org.http4k.core.Response
 import org.http4k.core.Status
+import org.http4k.routing.path
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableService
@@ -17,6 +18,24 @@ class FoodCompositionTableController @Inject constructor(
     fun getCompositionTables(user: Intake24User, request: Request): Response {
         return Response(Status.OK)
                 .body(stringCodec.encode(fctService.getFoodCompositionTables()))
+                .header("Content-Type", "application/json")
+    }
+
+    fun getCompositionTable(user: Intake24User, request: Request): Response {
+        val tableId = request.path("tableId")
+
+        if (tableId == null)
+            return Response(Status.BAD_REQUEST)
+        else {
+            return Response(Status.OK)
+                    .body(stringCodec.encode(fctService.getFoodCompositionTable(tableId)))
+                    .header("Content-Type", "application/json")
+        }
+    }
+
+    fun getNutrientTypes(user: Intake24User, request: Request): Response {
+        return Response(Status.OK)
+                .body(stringCodec.encode(fctService.getNutrientTypes()))
                 .header("Content-Type", "application/json")
     }
 

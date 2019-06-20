@@ -127,7 +127,9 @@ fun main() {
     val router = routes(
             "/foods/frequencies" bind Method.POST to authenticate(restrictToRoles(listOf("superuser"), exportController::exportFrequencies)),
             "/tasks" bind Method.GET to authenticate(taskStatusController::getTasksList),
-            "/foods/composition" bind Method.GET to authenticate(fctController::getCompositionTables),
+            "/foods/composition/tables" bind Method.GET to authenticate(fctController::getCompositionTables),
+            "/foods/composition/tables/{tableId}" bind Method.GET to authenticate(fctController::getCompositionTable),
+            "/foods/composition/nutrients" bind Method.GET to authenticate(fctController::getNutrientTypes),
             "/files/download" bind Method.GET to fileDownloadController::download
     )
 
