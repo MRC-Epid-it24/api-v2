@@ -5,6 +5,7 @@ import com.google.inject.Guice
 import com.google.inject.Inject
 import com.google.inject.Module
 import com.google.inject.name.Names
+import com.sun.security.ntlm.Server
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import io.netty.bootstrap.ServerBootstrap
@@ -26,6 +27,7 @@ import org.jooq.SQLDialect
 import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.TaskStatusManager
+import java.lang.Exception
 import java.net.InetSocketAddress
 import java.time.OffsetDateTime
 
@@ -84,6 +86,22 @@ class TaskStatusController @Inject() constructor(private val taskStatusManager: 
     }
 }
 
+object DefaultResponseHeaders : Filter {
+
+    private const val contentType = "content-type"
+
+    override fun invoke(next: HttpHandler): HttpHandler {
+        return {
+            val response = next.invoke(it)
+
+            if (response.header(contentType) == null)
+                response.header(contentType, ContentType.APPLICATION_JSON.toHeaderValue())
+            else
+                response
+        }
+    }
+}
+
 fun main() {
 
     val config = ConfigFactory.load()
@@ -129,13 +147,14 @@ fun main() {
             "/tasks" bind Method.GET to authenticate(taskStatusController::getTasksList),
             "/foods/composition/tables" bind Method.GET to authenticate(fctController::getCompositionTables),
             "/foods/composition/tables/{tableId}" bind Method.GET to authenticate(fctController::getCompositionTable),
+            "/foods/composition/tables/{tableId}" bind Method.POST to authenticate(fctController::updateCompositionTable),
             "/foods/composition/nutrients" bind Method.GET to authenticate(fctController::getNutrientTypes),
             "/files/download" bind Method.GET to fileDownloadController::download
     )
 
     val corsPolicy = CorsPolicy(listOf("*"), listOf("X-Auth-Token", "Content-Type"), Method.values().toList())
 
-    val app = ServerFilters.Cors(corsPolicy).then(router)
+    val app = ServerFilters.Cors(corsPolicy).then(DefaultResponseHeaders).then(router)
 
     val host = config.getString("http.host")
     val port = config.getInt("http.port")

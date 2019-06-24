@@ -43,13 +43,9 @@ class DatabaseClient(databaseUrl: String, username: String, password: String?, p
                 val result = transaction(DSL.using(connection, sqlDialect))
                 connection.commit()
                 return result
-            } catch (e: DataAccessException) {
+            } catch (e: Exception) {
                 tryRollback(connection)
-                throw DataAccessError(e)
-
-            } catch (e: Throwable) {
-                tryRollback(connection)
-                throw OtherError(e)
+                throw e
             } finally {
                 try {
                     connection.close()
@@ -59,8 +55,7 @@ class DatabaseClient(databaseUrl: String, username: String, password: String?, p
 
             }
         } catch (e: SQLException) {
-            throw OtherError(e)
+            throw e
         }
-
     }
 }
