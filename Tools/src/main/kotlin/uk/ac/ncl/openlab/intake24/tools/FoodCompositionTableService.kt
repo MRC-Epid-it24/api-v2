@@ -1,6 +1,5 @@
 package uk.ac.ncl.openlab.intake24.tools
 
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.google.inject.name.Named
@@ -11,12 +10,12 @@ import uk.ncl.ac.uk.intake24.foodsql.Tables
 data class FoodCompositionTableHeader(val id: String, val description: String)
 
 
-data class CSVColumnMapping(val nutrientId: Int, val columnOffset: Int)
+data class CsvColumnMapping(val nutrientId: Int, val columnOffset: Int)
 
-data class CSVTableMapping(val rowOffset: Int, val idColumnOffset: Int, val descriptionColumnOffset: Int,
-                           val localDescriptionColumnOffset: Int?, val nutrientColumns: List<CSVColumnMapping>)
+data class FoodCompositionCsvMapping(val rowOffset: Int, val idColumnOffset: Int, val descriptionColumnOffset: Int,
+                                     val localDescriptionColumnOffset: Int?, val nutrientColumns: List<CsvColumnMapping>)
 
-data class FoodCompositionTable(val id: String, val description: String, val mapping: CSVTableMapping)
+data class FoodCompositionTable(val id: String, val description: String, val mapping: FoodCompositionCsvMapping)
 
 data class NutrientType(val id: Int, val name: String, val unit: String)
 
@@ -69,14 +68,14 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
                     .orderBy(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET.asc())
                     .fetchArray()
                     .map {
-                        CSVColumnMapping(it[Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TYPE_ID],
+                        CsvColumnMapping(it[Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TYPE_ID],
                                 it[Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET])
                     }
 
             FoodCompositionTable(
                     tableRow[Tables.NUTRIENT_TABLES.ID],
                     tableRow[Tables.NUTRIENT_TABLES.DESCRIPTION],
-                    CSVTableMapping(
+                    FoodCompositionCsvMapping(
                             tableRow[Tables.NUTRIENT_TABLE_CSV_MAPPING.ROW_OFFSET],
                             tableRow[Tables.NUTRIENT_TABLE_CSV_MAPPING.ID_COLUMN_OFFSET],
                             tableRow[Tables.NUTRIENT_TABLE_CSV_MAPPING.DESCRIPTION_COLUMN_OFFSET],

@@ -21,6 +21,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.2.1")
 
     implementation("org.http4k:http4k-core:$http4k_version")
+    implementation("org.http4k:http4k-multipart:$http4k_version")
     implementation("org.http4k:http4k-server-netty:$http4k_version")
 
     implementation("com.auth0:java-jwt:3.8.1")

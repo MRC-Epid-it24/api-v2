@@ -1,9 +1,11 @@
 package uk.ac.ncl.openlab.intake24.http4k
 
 import com.google.inject.Inject
+import org.http4k.core.MultipartFormBody
 import org.http4k.core.Request
 import org.http4k.core.Response
 import org.http4k.core.Status
+import org.http4k.core.body.form
 import org.http4k.routing.path
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
@@ -42,18 +44,34 @@ class FoodCompositionTableController @Inject constructor(
         if (tableId == null)
             return Response(Status.BAD_REQUEST)
         else {
+            val update = stringCodec.decode(request.bodyString(), FoodCompositionTable::class)
 
+            if (update == null) {
+                return Response(Status.BAD_REQUEST)
+            } else {
+                fctService.updateFoodCompositionTable(tableId, update)
 
-                val update = stringCodec.decode(request.bodyString(), FoodCompositionTable::class)
+                return Response(Status.OK)
+                        .header("Content-Type", "application/json")
+            }
+        }
+    }
 
-                if (update == null) {
-                    return Response(Status.BAD_REQUEST)
-                } else {
-                    fctService.updateFoodCompositionTable(tableId, update)
+    fun uploadCsv(user: Intake24User, request: Request): Response {
+        val tableId = request.path("tableId")
 
-                    return Response(Status.OK)
-                            .header("Content-Type", "application/json")
-                }
+        if (tableId == null)
+            return Response(Status.BAD_REQUEST)
+        else {
+            val form = MultipartFormBody.from(request)
+            val file = form.file("file")
+
+            if (file != null) {
+                //logger.debug(file.)
+                return Response(Status.OK)
+            } else {
+                return Response(Status.BAD_REQUEST).body(formatErrorBody("Missing file"))
+            }
         }
     }
 
