@@ -1,9 +1,9 @@
 package uk.ac.ncl.openlab.intake24.http4k
 
-import com.google.inject.AbstractModule
-import com.google.inject.Guice
-import com.google.inject.Inject
-import com.google.inject.Module
+import com.fasterxml.jackson.core.JsonParseException
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.JsonMappingException
+import com.google.inject.*
 import com.google.inject.name.Names
 import com.sun.security.ntlm.Server
 import com.typesafe.config.Config
@@ -24,6 +24,10 @@ import org.http4k.routing.routes
 import org.http4k.server.*
 import org.http4k.server.Netty
 import org.jooq.SQLDialect
+import org.jooq.exception.DataAccessException
+import org.jooq.exception.NoDataFoundException
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.TaskStatusManager
@@ -102,6 +106,47 @@ object DefaultResponseHeaders : Filter {
     }
 }
 
+@Singleton
+class UnhandledExceptionHandler @Inject() constructor(val errorUtils: ErrorUtils) : Filter {
+
+    private val logger = LoggerFactory.getLogger(UnhandledExceptionHandler::class.java)!!
+
+    override fun invoke(next: HttpHandler): HttpHandler {
+        return {
+            try {
+                next.invoke(it)
+            } catch (e: Exception) {
+                logger.error("Unhandled ${e.javaClass.name}", e)
+                errorUtils.errorResponse(Status.INTERNAL_SERVER_ERROR, e)
+            }
+        }
+    }
+}
+
+@Singleton
+class CommonExceptionHandler @Inject() constructor(val errorUtils: ErrorUtils) : Filter {
+
+    private val logger = LoggerFactory.getLogger(CommonExceptionHandler::class.java)!!
+
+    override fun invoke(next: HttpHandler): HttpHandler {
+        return {
+            try {
+                next.invoke(it)
+            } catch (e: NoDataFoundException) {
+                // This is typically not an error worth logging
+                errorUtils.errorResponse(Status.NOT_FOUND, "Record not found")
+            } catch (e: DataAccessException) {
+                logger.error("Database error", e)
+                errorUtils.errorResponse(Status.INTERNAL_SERVER_ERROR, e)
+            } catch (e: JsonMappingException) {
+                errorUtils.errorResponse(Status.BAD_REQUEST, e)
+            } catch (e: JsonParseException) {
+                errorUtils.errorResponse(Status.BAD_REQUEST, e)
+            }
+        }
+    }
+}
+
 
 fun main() {
 
@@ -143,13 +188,18 @@ fun main() {
 
     val fctController = injector.getInstance(FoodCompositionTableController::class.java)
 
+    val unhandledExceptionHandler = injector.getInstance(UnhandledExceptionHandler::class.java)
+
+    val commonExceptionHandler = injector.getInstance(CommonExceptionHandler::class.java)
+
     val router = routes(
             "/foods/frequencies" bind Method.POST to authenticate(restrictToRoles(listOf("superuser"), exportController::exportFrequencies)),
             "/tasks" bind Method.GET to authenticate(taskStatusController::getTasksList),
             "/foods/composition/tables" bind Method.GET to authenticate(fctController::getCompositionTables),
+            "/foods/composition/tables" bind Method.POST to authenticate(fctController::createCompositionTable),
             "/foods/composition/tables/{tableId}" bind Method.GET to authenticate(fctController::getCompositionTable),
-            "/foods/composition/tables/{tableId}/csv" bind Method.POST to authenticate(fctController::uploadCsv),
-            "/foods/composition/tables/{tableId}" bind Method.POST to authenticate(fctController::updateCompositionTable),
+            "/foods/composition/tables/{tableId}/csv" bind Method.PATCH to authenticate(fctController::uploadCsv),
+            "/foods/composition/tables/{tableId}" bind Method.PATCH to authenticate(fctController::updateCompositionTable),
 
             "/foods/composition/nutrients" bind Method.GET to authenticate(fctController::getNutrientTypes),
             "/files/download" bind Method.GET to fileDownloadController::download
@@ -157,7 +207,12 @@ fun main() {
 
     val corsPolicy = CorsPolicy(listOf("*"), listOf("X-Auth-Token", "Content-Type"), Method.values().toList())
 
-    val app = ServerFilters.Cors(corsPolicy).then(DefaultResponseHeaders).then(router)
+    val app =
+            ServerFilters.Cors(corsPolicy)
+                    .then(unhandledExceptionHandler)
+                    .then(commonExceptionHandler)
+                    .then(DefaultResponseHeaders)
+                    .then(router)
 
     val host = config.getString("http.host")
     val port = config.getInt("http.port")

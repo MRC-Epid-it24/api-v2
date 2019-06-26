@@ -5,9 +5,7 @@ import org.http4k.core.MultipartFormBody
 import org.http4k.core.Request
 import org.http4k.core.Response
 import org.http4k.core.Status
-import org.http4k.core.body.form
 import org.http4k.routing.path
-import org.jooq.exception.NoDataFoundException
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.tools.CsvParseException
@@ -17,14 +15,14 @@ import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableService
 
 class FoodCompositionTableController @Inject constructor(
         private val fctService: FoodCompositionTableService,
-        private val stringCodec: StringCodec) {
+        private val stringCodec: StringCodec,
+        private val errorUtils: ErrorUtils) {
 
     private val logger = LoggerFactory.getLogger(FoodCompositionTableController::class.java)
 
     fun getCompositionTables(user: Intake24User, request: Request): Response {
         return Response(Status.OK)
                 .body(stringCodec.encode(fctService.getFoodCompositionTables()))
-                .header("Content-Type", "application/json")
     }
 
     fun getCompositionTable(user: Intake24User, request: Request): Response {
@@ -33,11 +31,8 @@ class FoodCompositionTableController @Inject constructor(
         return if (tableId == null)
             Response(Status.BAD_REQUEST)
         else {
-            translateDatabaseErrors(logger) {
-                Response(Status.OK)
-                        .body(stringCodec.encode(fctService.getFoodCompositionTable(tableId)))
-                        .header("Content-Type", "application/json")
-            }
+            Response(Status.OK)
+                    .body(stringCodec.encode(fctService.getFoodCompositionTable(tableId)))
         }
     }
 
@@ -54,9 +49,14 @@ class FoodCompositionTableController @Inject constructor(
             } else {
                 fctService.updateFoodCompositionTable(tableId, update)
                 return Response(Status.OK)
-
             }
         }
+    }
+
+    fun createCompositionTable(user: Intake24User, request: Request): Response {
+        val newTable = stringCodec.decode(request.bodyString(), FoodCompositionTable::class)
+        fctService.createFoodCompositionTable(newTable)
+        return Response(Status.OK)
     }
 
     fun uploadCsv(user: Intake24User, request: Request): Response {
@@ -68,22 +68,18 @@ class FoodCompositionTableController @Inject constructor(
             val form = MultipartFormBody.from(request)
             val file = form.file("file")
 
-            if (file != null) {
-                return catchAll(logger) {
-                    try {
-                        val tableInfo = fctService.getFoodCompositionTable(tableId)
-                        val parseResult = FoodCompositionCsvParser.parseTable(file.content, tableInfo.mapping)
-                        fctService.updateNutrientRecords(tableId, parseResult.rows)
+            return if (file != null) {
+                try {
+                    val tableInfo = fctService.getFoodCompositionTable(tableId)
+                    val parseResult = FoodCompositionCsvParser.parseTable(file.content, tableInfo.mapping)
+                    fctService.updateNutrientRecords(tableId, parseResult.rows)
 
-                        Response(Status.OK).body(stringCodec.encode(parseResult.warnings))
-                    } catch (e: NoDataFoundException) {
-                        Response(Status.NOT_FOUND)
-                    } catch (e: CsvParseException) {
-                        Response(Status.BAD_REQUEST).body(formatErrorBody(e))
-                    }
+                    Response(Status.OK).body(stringCodec.encode(parseResult.warnings))
+                } catch (e: CsvParseException) {
+                    errorUtils.errorResponse(Status.BAD_REQUEST, e)
                 }
             } else {
-                return Response(Status.BAD_REQUEST).body(formatErrorBody("Missing file part"))
+                errorUtils.errorResponse(Status.BAD_REQUEST, "Missing file part")
             }
         }
     }
@@ -91,7 +87,6 @@ class FoodCompositionTableController @Inject constructor(
     fun getNutrientTypes(user: Intake24User, request: Request): Response {
         return Response(Status.OK)
                 .body(stringCodec.encode(fctService.getNutrientTypes()))
-                .header("Content-Type", "application/json")
     }
 
 }

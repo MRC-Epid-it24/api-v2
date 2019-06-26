@@ -1,42 +1,28 @@
 package uk.ac.ncl.openlab.intake24.http4k
 
+import com.google.inject.Inject
+import com.google.inject.Singleton
+import org.http4k.core.ContentType
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.jooq.exception.DataAccessException
 import org.jooq.exception.NoDataFoundException
 import org.slf4j.Logger
+import uk.ac.ncl.intake24.serialization.StringCodec
 
-fun formatErrorBody(e: String): String {
-    return "{\"errorMessage\":\"$e\"}"
-}
+@Singleton
+class ErrorUtils @Inject() constructor(val stringCodec: StringCodec) {
+    private data class ErrorBody(val errorMessage: String)
 
-
-fun formatErrorBody(e: Exception): String {
-    val message = e.message
-
-    if (message != null)
-        return formatErrorBody(message)
-    else
-        return ""
-}
-
-fun translateDatabaseErrors(logger: Logger, block: () -> Response): Response {
-    return try {
-        block()
-    } catch (e: NoDataFoundException) {
-        // This is typically not an error worth logging
-        Response(Status.NOT_FOUND).body(formatErrorBody("Record not found"))
-    } catch (e: DataAccessException) {
-        logger.error("Database error", e)
-        Response(Status.INTERNAL_SERVER_ERROR).body(formatErrorBody(e))
+    fun errorResponse(status: Status, errorMessage: String): Response {
+        return Response(status)
+                .header("Content-Type", ContentType.APPLICATION_JSON.toHeaderValue())
+                .body(stringCodec.encode(ErrorBody(errorMessage)))
     }
-}
 
-fun catchAll(logger: Logger, block: () -> Response): Response {
-    return try {
-        block()
-    } catch (e: Exception) {
-        logger.error("Unhandled exception", e)
-        Response(Status.INTERNAL_SERVER_ERROR).body(formatErrorBody(e))
+    fun errorResponse(status: Status, cause: Exception): Response {
+        return errorResponse(status, cause.message ?: cause.javaClass.simpleName)
     }
+
+
 }

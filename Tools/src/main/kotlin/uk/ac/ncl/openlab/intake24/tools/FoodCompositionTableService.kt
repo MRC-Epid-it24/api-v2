@@ -3,6 +3,7 @@ package uk.ac.ncl.openlab.intake24.tools
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.google.inject.name.Named
+import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ncl.ac.uk.intake24.foodsql.Keys
 import uk.ncl.ac.uk.intake24.foodsql.Tables
@@ -22,6 +23,8 @@ data class NutrientType(val id: Int, val name: String, val unit: String)
 
 @Singleton
 class FoodCompositionTableService @Inject() constructor(@Named("foods") private val foodDatabase: DatabaseClient) {
+
+    private val logger = LoggerFactory.getLogger(FoodFrequencyStatsService::class.java)
 
     fun getFoodCompositionTables(): List<FoodCompositionTableHeader> {
         return foodDatabase.runTransaction {
@@ -98,12 +101,15 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
                     Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET
             )
 
-            update.mapping.nutrientColumns.fold(insert1, { acc, columnMapping ->
-                acc.values(tableId, columnMapping.nutrientId, columnMapping.columnOffset)
-            }).execute()
+            if (update.mapping.nutrientColumns.isNotEmpty()) {
+                update.mapping.nutrientColumns.fold(insert1, { acc, columnMapping ->
+                    acc.values(tableId, columnMapping.nutrientId, columnMapping.columnOffset)
+                }).execute()
+            }
 
             it.update(Tables.NUTRIENT_TABLE_CSV_MAPPING)
                     .set(Tables.NUTRIENT_TABLE_CSV_MAPPING.ROW_OFFSET, update.mapping.rowOffset)
+                    .set(Tables.NUTRIENT_TABLE_CSV_MAPPING.ID_COLUMN_OFFSET, update.mapping.idColumnOffset)
                     .set(Tables.NUTRIENT_TABLE_CSV_MAPPING.DESCRIPTION_COLUMN_OFFSET, update.mapping.descriptionColumnOffset)
                     .set(Tables.NUTRIENT_TABLE_CSV_MAPPING.LOCAL_DESCRIPTION_COLUMN_OFFSET, update.mapping.localDescriptionColumnOffset)
                     .where(Tables.NUTRIENT_TABLE_CSV_MAPPING.NUTRIENT_TABLE_ID.eq(tableId))
@@ -114,6 +120,44 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
                     .set(Tables.NUTRIENT_TABLES.DESCRIPTION, update.description)
                     .where(Tables.NUTRIENT_TABLES.ID.eq(tableId))
                     .execute()
+        }
+    }
+
+    fun createFoodCompositionTable(table: FoodCompositionTable) {
+
+        logger.debug(table.toString())
+
+        foodDatabase.runTransaction {
+            it.insertInto(Tables.NUTRIENT_TABLES,
+                    Tables.NUTRIENT_TABLES.ID,
+                    Tables.NUTRIENT_TABLES.DESCRIPTION)
+                    .values(table.id, table.description)
+                    .execute()
+
+            it.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING.NUTRIENT_TABLE_ID,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING.ID_COLUMN_OFFSET,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING.ROW_OFFSET,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING.DESCRIPTION_COLUMN_OFFSET,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING.LOCAL_DESCRIPTION_COLUMN_OFFSET
+            ).values(table.id,
+                    table.mapping.rowOffset,
+                    table.mapping.idColumnOffset,
+                    table.mapping.descriptionColumnOffset,
+                    table.mapping.localDescriptionColumnOffset)
+                    .execute()
+
+            val insert1 = it.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TABLE_ID,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TYPE_ID,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET
+            )
+
+            if (table.mapping.nutrientColumns.isNotEmpty()) {
+                table.mapping.nutrientColumns.fold(insert1, { acc, columnMapping ->
+                    acc.values(table.id, columnMapping.nutrientId, columnMapping.columnOffset)
+                }).execute()
+            }
         }
     }
 
@@ -133,7 +177,7 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
                         .execute()
 
                 it.deleteFrom(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS)
-                        .where(Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID.eq(tableId)
+                        .where(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID.eq(tableId)
                                 .and(Tables.NUTRIENT_TABLE_RECORDS.ID.`in`(records.map { it.recordId })))
                         .execute()
 
