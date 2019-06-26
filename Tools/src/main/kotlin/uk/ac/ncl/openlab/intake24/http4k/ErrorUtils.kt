@@ -31,3 +31,12 @@ fun translateDatabaseErrors(logger: Logger, block: () -> Response): Response {
         Response(Status.INTERNAL_SERVER_ERROR).body(formatErrorBody(e))
     }
 }
+
+fun catchAll(logger: Logger, block: () -> Response): Response {
+    return try {
+        block()
+    } catch (e: Exception) {
+        logger.error("Unhandled exception", e)
+        Response(Status.INTERNAL_SERVER_ERROR).body(formatErrorBody(e))
+    }
+}

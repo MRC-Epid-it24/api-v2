@@ -4,6 +4,7 @@ import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.google.inject.name.Named
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
+import uk.ncl.ac.uk.intake24.foodsql.Keys
 import uk.ncl.ac.uk.intake24.foodsql.Tables
 
 
@@ -113,6 +114,40 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
                     .set(Tables.NUTRIENT_TABLES.DESCRIPTION, update.description)
                     .where(Tables.NUTRIENT_TABLES.ID.eq(tableId))
                     .execute()
+        }
+    }
+
+    fun updateNutrientRecords(tableId: String, records: List<FoodCompositionTableRecord>) {
+        foodDatabase.runTransaction {
+            records.forEach { record ->
+                it.insertInto(Tables.NUTRIENT_TABLE_RECORDS,
+                        Tables.NUTRIENT_TABLE_RECORDS.ID,
+                        Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID,
+                        Tables.NUTRIENT_TABLE_RECORDS.ENGLISH_DESCRIPTION,
+                        Tables.NUTRIENT_TABLE_RECORDS.LOCAL_DESCRIPTION)
+                        .values(record.recordId, tableId, record.englishDescription, record.localDescription)
+                        .onConflictOnConstraint(Keys.NUTRIENT_TABLE_RECORDS_PK)
+                        .doUpdate()
+                        .set(Tables.NUTRIENT_TABLE_RECORDS.ENGLISH_DESCRIPTION, record.englishDescription)
+                        .set(Tables.NUTRIENT_TABLE_RECORDS.LOCAL_DESCRIPTION, record.localDescription)
+                        .execute()
+
+                it.deleteFrom(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS)
+                        .where(Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID.eq(tableId)
+                                .and(Tables.NUTRIENT_TABLE_RECORDS.ID.`in`(records.map { it.recordId })))
+                        .execute()
+
+                val insert1 = it.insertInto(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS,
+                        Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID,
+                        Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID,
+                        Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TYPE_ID,
+                        Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.UNITS_PER_100G)
+
+                record.nutrients.fold(insert1) { insert, col ->
+                    insert.values(tableId, record.recordId, col.first, col.second)
+                }.execute()
+
+            }
         }
     }
 

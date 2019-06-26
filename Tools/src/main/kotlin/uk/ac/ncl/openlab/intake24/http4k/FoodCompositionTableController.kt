@@ -7,8 +7,11 @@ import org.http4k.core.Response
 import org.http4k.core.Status
 import org.http4k.core.body.form
 import org.http4k.routing.path
+import org.jooq.exception.NoDataFoundException
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
+import uk.ac.ncl.openlab.intake24.tools.CsvParseException
+import uk.ac.ncl.openlab.intake24.tools.FoodCompositionCsvParser
 import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTable
 import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableService
 
@@ -50,9 +53,8 @@ class FoodCompositionTableController @Inject constructor(
                 return Response(Status.BAD_REQUEST)
             } else {
                 fctService.updateFoodCompositionTable(tableId, update)
-
                 return Response(Status.OK)
-                        .header("Content-Type", "application/json")
+
             }
         }
     }
@@ -67,10 +69,21 @@ class FoodCompositionTableController @Inject constructor(
             val file = form.file("file")
 
             if (file != null) {
-                //logger.debug(file.)
-                return Response(Status.OK)
+                return catchAll(logger) {
+                    try {
+                        val tableInfo = fctService.getFoodCompositionTable(tableId)
+                        val parseResult = FoodCompositionCsvParser.parseTable(file.content, tableInfo.mapping)
+                        fctService.updateNutrientRecords(tableId, parseResult.rows)
+
+                        Response(Status.OK).body(stringCodec.encode(parseResult.warnings))
+                    } catch (e: NoDataFoundException) {
+                        Response(Status.NOT_FOUND)
+                    } catch (e: CsvParseException) {
+                        Response(Status.BAD_REQUEST).body(formatErrorBody(e))
+                    }
+                }
             } else {
-                return Response(Status.BAD_REQUEST).body(formatErrorBody("Missing file"))
+                return Response(Status.BAD_REQUEST).body(formatErrorBody("Missing file part"))
             }
         }
     }

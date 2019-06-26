@@ -1,58 +1,59 @@
 package uk.ac.ncl.openlab.intake24.tools
 
 import com.opencsv.CSVReader
-import org.slf4j.LoggerFactory
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 
-class FoodCompositionCsvParseException (message: String): Exception(message)
+
+
+data class FoodCompositionTableRecord(val recordId: String, val englishDescription: String, val localDescription: String?, val nutrients: List<Pair<Int, Double>>)
+
+data class CsvParseResult(val rows: List<FoodCompositionTableRecord>, val warnings: List<String>)
+
+class CsvParseException(message: String, cause: Throwable) : Exception(message, cause)
 
 object FoodCompositionCsvParser {
 
-    val logger = LoggerFactory.getLogger(FoodCompositionCsvParser::class.java)
-
-    fun parseTable(input: InputStream, mapping: FoodCompositionCsvMapping): List<Object> {
-
-        val rows = CSVReader(InputStreamReader(input, StandardCharsets.UTF_8)).iterator().asSequence().drop(mapping.rowOffset)
-
-        
 
 
+    private fun parseRow(row: Array<String>, rowIndex: Int, mapping: FoodCompositionCsvMapping): Pair<FoodCompositionTableRecord, List<String>> {
+        val nutrients = mutableListOf<Pair<Int, Double>>()
+        val warnings = mutableListOf<String>()
 
-        repeat(mapping.rowOffset) {
-            if (!iter.hasNext())
-                throw FoodCompositionCsvParseException("Unexpected end of file while trying to skip header rows")
-            iter.next()
-        }
+        val recordId = row[mapping.idColumnOffset]
+        val description = row[mapping.descriptionColumnOffset]
+        val localDescription = if (mapping.localDescriptionColumnOffset == null) null else row[mapping.localDescriptionColumnOffset]
 
-        iter.forEachRemaining {
-
-        }
-
-
-
-        def readNutrients (row: IndexedSeq[String], rowIndex: Int): Map[Long, Double] = mapping.nutrientMapping.foldLeft(Map[Long, Double]()) {
-            case(acc, (nutrientId, colNum)) => {
+        mapping.nutrientColumns.forEach { col ->
             try {
-                acc + (nutrientId -> row(colNum-1).toDouble)
-            } catch {
-                case e : Throwable => {
-                    val cell = s"${row(mapping.descriptionColumn)} (row ${rowIndex+1}, column ${offsetToExcelColumn(colNum-1).reverse})"
+                nutrients.add(Pair(col.nutrientId, row[col.columnOffset].toDouble()))
+            } catch (e: Exception) {
 
-                    if (nutrientId == 1l)
-                        println(s"Failed to read energy (kcal) for $cell! This is an essential nutrient column, please check the source table for errors.")
-                    else
-                        println(s"Failed to read nutrient type ${nutrientId.toString} for $cell, assuming data N/A")
-                    acc
-                }
+                if (col.nutrientId == 1)
+                    throw CsvParseException("Failed to parse Energy (kcal) in row $rowIndex at column offset ${col.columnOffset}. This value is required.", e)
+                else
+                    warnings.add("Failed to parse nutrient type ${col.nutrientId} in row $rowIndex at column offset ${col.columnOffset}: ${e.message
+                            ?: e.javaClass.simpleName}")
             }
         }
+
+        return Pair(FoodCompositionTableRecord(recordId, description, localDescription, nutrients), warnings)
+    }
+
+
+    fun parseTable(input: InputStream, mapping: FoodCompositionCsvMapping): CsvParseResult {
+        val csvRows = CSVReader(InputStreamReader(input, StandardCharsets.UTF_8)).iterator().asSequence().drop(mapping.rowOffset)
+
+        val parsedRows = mutableListOf<FoodCompositionTableRecord>()
+        val warnings = mutableListOf<String>()
+
+        csvRows.forEachIndexed { index, row ->
+            val parsedRow = parseRow(row, index + 2, mapping)
+            parsedRows.add(parsedRow.first)
+            warnings.addAll(parsedRow.second)
         }
 
-        rows.zipWithIndex.drop(mapping.rowOffset).map {
-            case(row, index) =>
-            NutrientTableRecord(row(mapping.idColumn), row(mapping.descriptionColumn), mapping.localDescriptionColumn.map(row(_)), readNutrients(row, index))
-        }
+        return CsvParseResult(parsedRows, warnings)
     }
 }

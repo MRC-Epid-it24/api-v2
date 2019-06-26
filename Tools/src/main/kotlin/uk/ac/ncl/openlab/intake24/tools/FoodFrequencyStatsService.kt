@@ -85,7 +85,7 @@ class FoodFrequencyStatsService @Inject() constructor(@Named("system") val syste
         val result = Files.createTempFile("intake24", ".csv")
         val writer = CSVWriter(FileWriter(result.toFile()))
 
-        writer.writeNext(arrayOf("Food code", "English description", "Local description", "Times reported"))
+        writer.writeNext(arrayOf("Food code", "English englishDescription", "Local englishDescription", "Times reported"))
 
         foodsCache.getIndexableFoods(locale).sortedBy { it.code }.forEach { food ->
             writer.writeNext(arrayOf(food.code, food.englishDescription, food.description, (frequencies[food.code]
