@@ -178,7 +178,7 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
 
                 it.deleteFrom(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS)
                         .where(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID.eq(tableId)
-                                .and(Tables.NUTRIENT_TABLE_RECORDS.ID.`in`(records.map { it.recordId })))
+                                .and(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID.`in`(records.map { it.recordId })))
                         .execute()
 
                 val insert1 = it.insertInto(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS,

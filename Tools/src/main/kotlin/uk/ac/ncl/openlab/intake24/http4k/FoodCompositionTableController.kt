@@ -71,7 +71,13 @@ class FoodCompositionTableController @Inject constructor(
             return if (file != null) {
                 try {
                     val tableInfo = fctService.getFoodCompositionTable(tableId)
-                    val parseResult = FoodCompositionCsvParser.parseTable(file.content, tableInfo.mapping)
+
+                    val nutrientTypeDescriptions = fctService.getNutrientTypes().fold(emptyMap<Int, String>()) {
+                        acc, nutrient ->
+                        acc + Pair(nutrient.id, nutrient.name)
+                    }
+
+                    val parseResult = FoodCompositionCsvParser.parseTable(file.content, tableInfo.mapping, nutrientTypeDescriptions)
                     fctService.updateNutrientRecords(tableId, parseResult.rows)
 
                     Response(Status.OK).body(stringCodec.encode(parseResult.warnings))
