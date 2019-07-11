@@ -9,7 +9,7 @@ import org.http4k.routing.path
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.tools.CsvParseException
-import uk.ac.ncl.openlab.intake24.tools.FoodCompositionCsvParser
+import uk.ac.ncl.openlab.intake24.tools.DeriveLocaleCsvParser
 import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTable
 import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableService
 
@@ -77,7 +77,7 @@ class FoodCompositionTableController @Inject constructor(
                         acc + Pair(nutrient.id, nutrient.name)
                     }
 
-                    val parseResult = FoodCompositionCsvParser.parseTable(file.content, tableInfo.mapping, nutrientTypeDescriptions)
+                    val parseResult = DeriveLocaleCsvParser.parseTable(file.content, tableInfo.mapping, nutrientTypeDescriptions)
                     fctService.updateNutrientRecords(tableId, parseResult.rows)
 
                     Response(Status.OK).body(stringCodec.encode(parseResult.warnings))
