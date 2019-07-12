@@ -47,10 +47,8 @@ object DeriveLocaleCsvParser {
             "New", "New-NDB", "New+subfood" ->
                 if (newFctCode.isBlank())
                     throw DeriveLocaleParseException("Food composition table code required for new food in row $rowIndex but was not provided")
-                else {
-                    copyDescriptions.add(0, FoodDescription(localDescription, localDescription))
+                else
                     FoodAction.New(copyDescriptions, FoodCompositionTableReference(newFctId, newFctCode), false)
-                }
 
             "New-Ingredient" ->
                 if (newFctCode.isBlank())

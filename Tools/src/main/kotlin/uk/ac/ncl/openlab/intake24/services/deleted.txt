@@ -1,0 +1,116 @@
+   val copyTable = name("copy").fields("src_code", "dst_code").`as`(selectFrom(
+                    values(*foods.map {
+                        row(it.sourceCode, it.destCode)
+                    }.toTypedArray())
+            ))
+
+            val tempTable = table("temp")
+
+            val tempN = field("n", SQLDataType.INTEGER)
+            val tempDstCode = field("dst_code", SQLDataType.VARCHAR)
+            val tempSrcMethodId = field("src_method_id", SQLDataType.INTEGER)
+            val tempDstMethodId = field("dst_method_id", SQLDataType.INTEGER)
+
+            context.createTemporaryTable(tempTable)
+                    .columns(tempN, tempDstCode, tempSrcMethodId, tempDstMethodId)
+                    .onCommitDrop()
+                    .execute()
+
+            context.with(copyTable)
+                    .insertInto(tempTable, tempN, tempDstCode, tempSrcMethodId)
+                    .select(
+                            context.select(rowNumber().over(), copyTable.field("dst_code").coerce(SQLDataType.VARCHAR), FOODS_PORTION_SIZE_METHODS.ID)
+                                    .from(FOODS_PORTION_SIZE_METHODS.join(copyTable).on(FOODS_PORTION_SIZE_METHODS.FOOD_CODE.eq(copyTable.field("src_code").coerce(SQLDataType.VARCHAR))))
+                                    .where(FOODS_PORTION_SIZE_METHODS.LOCALE_ID.eq(sourceLocale)))
+                    .execute()
+
+            /* with new_ids as (
+    insert into foods_portion_size_methods(food_code, locale_id, method, description, image_url, use_for_recipes)
+    select dst_code, 'en_GB_v1', method, description, image_url, use_for_recipes from
+    temp join foods_portion_size_methods on temp.src_method_id = foods_portion_size_methods.id
+    order by temp.n
+    returning id
+)
+update temp set dst_method_id = id from (select row_number() over () as n, id from new_ids) as t
+where temp.n = t.n*/
+
+
+            context.with("new_ids").`as`(
+                    context.insertInto(FOODS_PORTION_SIZE_METHODS,
+                            FOODS_PORTION_SIZE_METHODS.FOOD_CODE,
+                            FOODS_PORTION_SIZE_METHODS.LOCALE_ID,
+                            FOODS_PORTION_SIZE_METHODS.METHOD,
+                            FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
+                            FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
+                            FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                            FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+                            .select(
+                                    context.select(tempDstCode,
+                                            destLocale,
+                                            FOODS_PORTION_SIZE_METHODS.METHOD,
+                                            FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
+                                            FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
+                                            FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                                            FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+                                            .from(tempTable.join(FOODS_PORTION_SIZE_METHODS.on(FOODS_PORTION_SIZE_METHODS.ID = tempSrcMethodId)))
+
+
+                            )
+                            .returningResult(FOODS_PORTION_SIZE_METHODS.ID)
+
+
+            ).update(null)
+
+            logger.debug(dbg.toString())
+
+
+
+
+
+
+            val insert1 = context.insertInto(FOODS_PORTION_SIZE_METHODS,
+                    FOODS_PORTION_SIZE_METHODS.FOOD_CODE,
+                    FOODS_PORTION_SIZE_METHODS.LOCALE_ID,
+                    FOODS_PORTION_SIZE_METHODS.METHOD,
+                    FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
+                    FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
+                    FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                    FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+
+            methodsToCopy.fold(insert1) { query, method ->
+                query.values(method.value1(),
+                        FOODS_PORTION_SIZE_METHODS.METHOD,
+                        FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
+                        FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
+                        FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                        FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+
+            }
+
+
+            val destMethodIds = context
+                    .with(valuesTable)
+                    .insertInto(FOODS_PORTION_SIZE_METHODS,
+                            FOODS_PORTION_SIZE_METHODS.FOOD_CODE,
+                            FOODS_PORTION_SIZE_METHODS.LOCALE_ID,
+                            FOODS_PORTION_SIZE_METHODS.METHOD,
+                            FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
+                            FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
+                            FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                            FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+                    .select(context.select(
+                            valuesTable.field("dest_code").coerce(SQLDataType.VARCHAR),
+                            inline(destLocale),
+                            FOODS_PORTION_SIZE_METHODS.METHOD,
+                            FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
+                            FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
+                            FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                            FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+                            .from(table("t").join(FOODS_PORTION_SIZE_METHODS).on(FOODS_PORTION_SIZE_METHODS.ID.eq(valuesTable.field("src_id").coerce(SQLDataType.INTEGER))))
+                    )
+                    .returningResult(FOODS_PORTION_SIZE_METHODS.ID)
+                    .fetch()
+                    .intoArray(FOODS_PORTION_SIZE_METHODS.ID)
+
+
+            logger.debug(destMethodIds.toString()) */

@@ -142,6 +142,8 @@ class CommonExceptionHandler @Inject() constructor(val errorUtils: ErrorUtils) :
                 errorUtils.errorResponse(Status.BAD_REQUEST, e)
             } catch (e: JsonParseException) {
                 errorUtils.errorResponse(Status.BAD_REQUEST, e)
+            } catch (e: IllegalArgumentException) {
+                errorUtils.errorResponse(Status.BAD_REQUEST, e)
             }
         }
     }
@@ -184,6 +186,10 @@ fun main() {
 
     val exportController = injector.getInstance(FoodFrequencyStatsController::class.java)
 
+    val foodsController = injector.getInstance(FoodsController::class.java)
+
+    val deriveLocaleController = injector.getInstance(DeriveLocaleController::class.java)
+
     val fileDownloadController = injector.getInstance(LocalSecureURLController::class.java)
 
     val fctController = injector.getInstance(FoodCompositionTableController::class.java)
@@ -195,6 +201,12 @@ fun main() {
     val router = routes(
             "/foods/frequencies" bind Method.POST to authenticate(restrictToRoles(listOf("superuser"), exportController::exportFrequencies)),
             "/tasks" bind Method.GET to authenticate(taskStatusController::getTasksList),
+
+            "/v2/foods/copy" bind Method.POST to authenticate(foodsController::copyFoods),
+            "/v2/foods/copy-local" bind Method.POST to authenticate (foodsController::copyLocalFoods),
+
+            "/v2/foods/derive-locale" bind Method.POST to authenticate (deriveLocaleController::deriveLocale),
+
             "/foods/composition/tables" bind Method.GET to authenticate(fctController::getCompositionTables),
             "/foods/composition/tables" bind Method.POST to authenticate(fctController::createCompositionTable),
             "/foods/composition/tables/{tableId}" bind Method.GET to authenticate(fctController::getCompositionTable),

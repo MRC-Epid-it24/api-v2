@@ -3,9 +3,11 @@ package uk.ac.ncl.openlab.intake24.services
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.google.inject.name.Named
+
 import org.apache.commons.lang3.StringUtils
 import org.jooq.DSLContext
-import org.jooq.impl.DSL.inline
+import org.jooq.impl.DSL.*
+import org.jooq.impl.SQLDataType
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableReference
@@ -22,7 +24,8 @@ data class NewLocalFoodV2(val code: String, val localDescription: String?, val f
 
 data class CopyFoodV2(val sourceCode: String, val newCode: String, val newDescription: String)
 
-data class CopyLocalV2(val sourceLocale: String, val destLocale: String, val sourceCode: String, val destCode: String, val newLocalDescription: String)
+data class CopyLocalV2(val sourceCode: String, val destCode: String, val localDescription: String)
+
 
 @Singleton
 class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatabase: DatabaseClient) {
@@ -49,6 +52,13 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
             return description
     }
 
+    fun getDuplicateCodes(newCodes: Set<String>): Set<String> {
+        return foodDatabase.runTransaction {
+            it.select(FOODS.CODE).from(FOODS).where(FOODS.CODE.`in`(newCodes))
+                    .fetchArray(FOODS.CODE)
+        }.toSet()
+    }
+
     fun createFood(food: NewFoodV2) {
         createFoods(listOf(food))
     }
@@ -61,7 +71,14 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
 
     fun createFoods(foods: List<NewFoodV2>, context: DSLContext) {
         if (foods.isNotEmpty()) {
+
+
             logger.debug("Writing ${foods.size} new food records to database")
+
+            foods.sortedBy { it.code }.forEach {
+
+                logger.debug("${it.code} | ${it.englishDescription}")
+            }
 
             val foodsInsertQuery = context.insertInto(FOODS, FOODS.CODE, FOODS.DESCRIPTION, FOODS.FOOD_GROUP_ID, FOODS.VERSION)
 
@@ -139,6 +156,19 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
 
     fun copyFoods(foods: List<CopyFoodV2>, context: DSLContext) {
         if (foods.isNotEmpty()) {
+
+            val sourceCodes = foods.map { it.sourceCode }
+
+            val existingSources = context
+                    .select(FOODS.CODE)
+                    .from(FOODS)
+                    .where(FOODS.CODE.`in`(sourceCodes))
+                    .fetchArray(FOODS.CODE)
+
+            if (existingSources.size != sourceCodes.size) {
+                throw IllegalArgumentException("Invalid source food codes: ${sourceCodes.minus(existingSources).joinToString()}")
+            }
+
             val foodsQueries = foods.map {
                 context.insertInto(FOODS, FOODS.CODE, FOODS.DESCRIPTION, FOODS.FOOD_GROUP_ID, FOODS.VERSION)
                         .select(context
@@ -163,22 +193,29 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                                 .where(FOODS_CATEGORIES.FOOD_CODE.eq(it.sourceCode)))
             }
 
+            // FIXME: Duplicate codes should produce more specific exceptions (currently triggers generic HTTP 500 in API server)
             context.batch(foodsQueries + foodAttributeQueries + foodCategoriesQueries).execute()
 
         } else
             logger.debug("Empty list")
     }
 
-    fun copyLocalFoods(foods: List<CopyLocalV2>, context: DSLContext) {
+    fun copyFoods(foods: List<CopyFoodV2>) {
+        foodDatabase.runTransaction {
+            copyFoods(foods, it)
+        }
+    }
+
+    fun copyLocalFoods(sourceLocale: String, destLocale: String, foods: List<CopyLocalV2>, context: DSLContext) {
         if (foods.isNotEmpty()) {
 
             val localFoodsQueries = foods.map {
                 context.insertInto(FOODS_LOCAL, FOODS_LOCAL.FOOD_CODE, FOODS_LOCAL.LOCALE_ID,
                         FOODS_LOCAL.LOCAL_DESCRIPTION, FOODS_LOCAL.SIMPLE_LOCAL_DESCRIPTION, FOODS_LOCAL.VERSION)
                         .values(it.destCode,
-                                it.destLocale,
-                                truncateDescription(it.newLocalDescription, it.destCode),
-                                truncateDescription(StringUtils.stripAccents(it.newLocalDescription), it.destCode),
+                                destLocale,
+                                truncateDescription(it.localDescription, it.destCode),
+                                truncateDescription(StringUtils.stripAccents(it.localDescription), it.destCode),
                                 UUID.randomUUID())
             }
 
@@ -187,31 +224,85 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                         FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_ID, FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_RECORD_ID)
                         .select(context.select(
                                 inline(it.destCode),
-                                inline(it.destLocale),
+                                inline(destLocale),
                                 FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_ID,
                                 FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_RECORD_ID)
-                                .where(FOODS_NUTRIENT_MAPPING.FOOD_CODE.eq(it.sourceCode).and(FOODS_NUTRIENT_MAPPING.LOCALE_ID.eq(it.sourceLocale))))
+                                .from(FOODS_NUTRIENT_MAPPING)
+                                .where(FOODS_NUTRIENT_MAPPING.FOOD_CODE.eq(it.sourceCode).and(FOODS_NUTRIENT_MAPPING.LOCALE_ID.eq(sourceLocale))))
             }
 
-            val sourcePortionSizeMethods = foods.map {
+            context.batch(localFoodsQueries + nutrientMappingQueries).execute()
 
-                context.select(
-                        FOODS_PORTION_SIZE_METHODS.ID,
-                        FOODS_PORTION_SIZE_METHODS.FOOD_CODE,
-                        FOODS_PORTION_SIZE_METHODS.METHOD,
-                        FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
-                        FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
-                        FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
-                        FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
-                        .from(FOODS_PORTION_SIZE_METHODS)
-                        .where(FOODS_PORTION_SIZE_METHODS.FOOD_CODE.eq(it.sourceCode).and(FOODS_PORTION_SIZE_METHODS.LOCALE_ID.eq(it.sourceLocale)))
+            val copyTable = name("copy").fields("src_code", "dst_code").`as`(selectFrom(
+                    values(*foods.map {
+                        row(it.sourceCode, it.destCode)
+                    }.toTypedArray())
+            ))
 
-            }
+            // FIXME: Performance: No need to copy data via application
 
+            val sourceMethods = context.with(copyTable).select(
+                    copyTable.field("dst_code").coerce(SQLDataType.VARCHAR),
+                    FOODS_PORTION_SIZE_METHODS.ID,
+                    FOODS_PORTION_SIZE_METHODS.FOOD_CODE,
+                    FOODS_PORTION_SIZE_METHODS.LOCALE_ID,
+                    FOODS_PORTION_SIZE_METHODS.METHOD,
+                    FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
+                    FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
+                    FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                    FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+                    .from(FOODS_PORTION_SIZE_METHODS.join(copyTable).on(FOODS_PORTION_SIZE_METHODS.FOOD_CODE.eq(copyTable.field("src_code").coerce(SQLDataType.VARCHAR))))
+                    .where(FOODS_PORTION_SIZE_METHODS.LOCALE_ID.eq(sourceLocale))
+                    .fetchArray()
+
+            val insert1 = context.insertInto(FOODS_PORTION_SIZE_METHODS,
+                    FOODS_PORTION_SIZE_METHODS.FOOD_CODE,
+                    FOODS_PORTION_SIZE_METHODS.LOCALE_ID,
+                    FOODS_PORTION_SIZE_METHODS.METHOD,
+                    FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
+                    FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
+                    FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                    FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+
+            val newMethodIds = sourceMethods.fold(insert1) { q, row ->
+                q.values(row.value1(),
+                        destLocale,
+                        row[FOODS_PORTION_SIZE_METHODS.METHOD],
+                        row[FOODS_PORTION_SIZE_METHODS.DESCRIPTION],
+                        row[FOODS_PORTION_SIZE_METHODS.IMAGE_URL],
+                        row[FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES],
+                        row[FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR])
+            }.returningResult(FOODS_PORTION_SIZE_METHODS.ID).fetch().intoArray(FOODS_PORTION_SIZE_METHODS.ID)
+
+            val methodCopies = sourceMethods.map { it[FOODS_PORTION_SIZE_METHODS.ID] }.zip(newMethodIds)
+
+            val methodCopyTable = name("copy").fields("src_method_id", "dst_method_id").`as`(selectFrom(
+                    values(*methodCopies.map {
+                        row(it.first, it.second)
+                    }.toTypedArray())
+            ))
+
+            context.with(methodCopyTable).insertInto(FOODS_PORTION_SIZE_METHOD_PARAMS,
+                    FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID,
+                    FOODS_PORTION_SIZE_METHOD_PARAMS.NAME,
+                    FOODS_PORTION_SIZE_METHOD_PARAMS.VALUE)
+                    .select(
+                            context.select(methodCopyTable.field("dst_method_id").coerce(SQLDataType.INTEGER),
+                                    FOODS_PORTION_SIZE_METHOD_PARAMS.NAME,
+                                    FOODS_PORTION_SIZE_METHOD_PARAMS.VALUE)
+                                    .from(methodCopyTable.join(FOODS_PORTION_SIZE_METHOD_PARAMS)
+                                            .on(FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID.eq(methodCopyTable.field("src_method_id").coerce(SQLDataType.INTEGER))))
+                    ).execute()
 
         } else
             logger.debug("Empty list")
     }
 
+
+    fun copyLocalFoods(sourceLocale: String, destLocale: String, foods: List<CopyLocalV2>) {
+        foodDatabase.runTransaction {
+            copyLocalFoods(sourceLocale, destLocale, foods, it)
+        }
+    }
 
 }
