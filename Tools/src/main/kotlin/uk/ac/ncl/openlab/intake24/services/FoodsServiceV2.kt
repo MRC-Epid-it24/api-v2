@@ -45,7 +45,7 @@ data class PortionSizeMethod(val method: String, val description: String, val im
                              val conversionFactor: Double, val parameters: List<PortionSizeMethodParameter>)
 
 
-data class UpdateLocalFoodV2(val code: String, val baseVersion: UUID?, val localDescription: String?,
+data class UpdateLocalFoodV2(val code: String, val baseVersion: UUID?, val newCode: String, val localDescription: String?,
                              val nutrientTableCodes: List<FoodCompositionTableReference>, val portionSize: List<PortionSizeMethod>,
                              val associatedFoods: List<AssociatedFood>, val brandNames: List<String>)
 
@@ -62,6 +62,59 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
             if (list.isEmpty())
                 throw RuntimeException("This function must not be called with an empty list")
         }
+
+
+        fun getPortionSizeMethods(foodCodes: List<String>, localeId: String, context: DSLContext): Map<String, List<PortionSizeMethod>> {
+            if (foodCodes.isNotEmpty()) {
+
+                val portionSizeMethodRows = context.select(FOODS_PORTION_SIZE_METHODS.ID,
+                        FOODS_PORTION_SIZE_METHODS.FOOD_CODE,
+                        FOODS_PORTION_SIZE_METHODS.LOCALE_ID,
+                        FOODS_PORTION_SIZE_METHODS.METHOD,
+                        FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
+                        FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
+                        FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                        FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+                        .from(FOODS_PORTION_SIZE_METHODS)
+                        .where(FOODS_PORTION_SIZE_METHODS.FOOD_CODE.`in`(foodCodes).and(FOODS_PORTION_SIZE_METHODS.LOCALE_ID.eq(localeId)))
+                        .fetchArray()
+
+                val ids = portionSizeMethodRows.map { it[FOODS_PORTION_SIZE_METHODS.ID] }
+
+                val parameters = context.select(
+                        FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID,
+                        FOODS_PORTION_SIZE_METHOD_PARAMS.NAME,
+                        FOODS_PORTION_SIZE_METHOD_PARAMS.VALUE)
+                        .from(FOODS_PORTION_SIZE_METHODS)
+                        .where(FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID.`in`(ids))
+                        .fold(emptyMap<Int, List<PortionSizeMethodParameter>>()) { map, row ->
+                            val id = row[FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID]
+                            val list = map[id] ?: emptyList()
+
+                            map + Pair(id, list + PortionSizeMethodParameter(row[FOODS_PORTION_SIZE_METHOD_PARAMS.NAME], row[FOODS_PORTION_SIZE_METHOD_PARAMS.VALUE]))
+                        }
+
+
+                return portionSizeMethodRows.fold(emptyMap()) { map, row ->
+
+                    val foodCode = row[FOODS_PORTION_SIZE_METHODS.FOOD_CODE]
+                    val methods = map[foodCode] ?: emptyList()
+
+                    map + Pair(foodCode, methods + PortionSizeMethod(
+                            row[FOODS_PORTION_SIZE_METHODS.METHOD],
+                            row[FOODS_PORTION_SIZE_METHODS.DESCRIPTION],
+                            row[FOODS_PORTION_SIZE_METHODS.IMAGE_URL],
+                            row[FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES],
+                            row[FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR],
+                            parameters[row[FOODS_PORTION_SIZE_METHODS.ID]] ?: emptyList())
+
+                    )
+                }
+
+            } else
+                return emptyMap()
+        }
+
 
         fun updatePortionSizeMethods(updates: List<Pair<String, List<PortionSizeMethod>>>, localeId: String, context: DSLContext) {
             if (updates.isNotEmpty()) {
@@ -113,6 +166,23 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
         }
 
 
+        fun getNutrientTableCodes(foodCodes: List<String>, localeId: String, context: DSLContext): Map<String, List<FoodCompositionTableReference>> {
+            if (foodCodes.isNotEmpty()) {
+                return context.select(FOODS_NUTRIENT_MAPPING.FOOD_CODE, FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_ID, FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_RECORD_ID)
+                        .from(FOODS_NUTRIENT_MAPPING)
+                        .where(FOODS_NUTRIENT_MAPPING.FOOD_CODE.`in`(foodCodes).and(FOODS_NUTRIENT_MAPPING.LOCALE_ID.eq(localeId)))
+                        .fetchArray()
+                        .fold(emptyMap()) { map, row ->
+                            val code = row[FOODS_NUTRIENT_MAPPING.FOOD_CODE]
+                            val list = map[code] ?: emptyList()
+
+                            map + Pair(code, list + FoodCompositionTableReference(row[FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_ID],
+                                    row[FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_RECORD_ID]))
+                        }
+            } else
+                return emptyMap()
+        }
+
         fun updateNutrientTableCodes(updates: List<Pair<String, List<FoodCompositionTableReference>>>, localeId: String, context: DSLContext) {
             if (updates.isNotEmpty()) {
                 val deleteQuery = context.deleteFrom(FOODS_NUTRIENT_MAPPING)
@@ -143,13 +213,28 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
             }
         }
 
+        fun getBrands(foodCodes: List<String>, localeId: String, context: DSLContext): Map<String, List<String>> {
+            if (foodCodes.isNotEmpty()) {
+                return context.select(BRANDS.FOOD_CODE, BRANDS.NAME)
+                        .from(BRANDS)
+                        .where(BRANDS.FOOD_CODE.`in`(foodCodes).and(BRANDS.LOCALE_ID.eq(localeId)))
+                        .fetchArray()
+                        .fold(emptyMap()) { map, row ->
+                            val code = row[BRANDS.FOOD_CODE]
+                            val list = map[code] ?: emptyList()
+                            map + Pair(code, list + row[BRANDS.NAME])
+                        }
+            } else
+                return emptyMap()
+        }
+
         fun updateBrands(updates: List<Pair<String, List<String>>>, localeId: String, context: DSLContext) {
             if (updates.isNotEmpty()) {
 
                 val deleteQuery = context.deleteFrom(BRANDS)
                         .where(BRANDS.FOOD_CODE.`in`(updates.map { it.first }).and(BRANDS.LOCALE_ID.eq(localeId)))
 
-                if (updates.any { it.second.isNotEmpty()}) {
+                if (updates.any { it.second.isNotEmpty() }) {
 
                     val insertQuery1 = context.insertInto(FOODS_NUTRIENT_MAPPING,
                             BRANDS.FOOD_CODE,
@@ -172,6 +257,36 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
             }
         }
 
+        fun getAssociatedFoods(foodCodes: List<String>, localeId: String, context: DSLContext): Map<String, List<AssociatedFood>> {
+            if (foodCodes.isNotEmpty()) {
+                return context.select(ASSOCIATED_FOODS.FOOD_CODE,
+                        ASSOCIATED_FOODS.LOCALE_ID,
+                        ASSOCIATED_FOODS.ASSOCIATED_FOOD_CODE,
+                        ASSOCIATED_FOODS.ASSOCIATED_CATEGORY_CODE,
+                        ASSOCIATED_FOODS.TEXT,
+                        ASSOCIATED_FOODS.LINK_AS_MAIN,
+                        ASSOCIATED_FOODS.GENERIC_NAME)
+                        .from(ASSOCIATED_FOODS)
+                        .where(ASSOCIATED_FOODS.FOOD_CODE.`in`(foodCodes).and(ASSOCIATED_FOODS.LOCALE_ID.eq(localeId)))
+                        .fetchArray()
+                        .fold(emptyMap()) { map, row ->
+                            val code = row[ASSOCIATED_FOODS.FOOD_CODE]
+                            val list = map[code] ?: emptyList()
+
+                            val assocFoodCode = row[ASSOCIATED_FOODS.ASSOCIATED_FOOD_CODE]
+                            val assocCategoryCode = row[ASSOCIATED_FOODS.ASSOCIATED_CATEGORY_CODE]
+
+                            val foodOrCategoryCode = if (assocFoodCode != null)
+                                FoodCode(assocFoodCode)
+                            else
+                                CategoryCode(assocCategoryCode)
+
+                            map + Pair(code, list + AssociatedFood(foodOrCategoryCode, row[ASSOCIATED_FOODS.TEXT],
+                                    row[ASSOCIATED_FOODS.LINK_AS_MAIN], row[ASSOCIATED_FOODS.GENERIC_NAME]))
+                        }
+            } else
+                return emptyMap()
+        }
 
         fun updateAssociatedFoods(updates: List<Pair<String, List<AssociatedFood>>>, localeId: String, context: DSLContext) {
             if (updates.isNotEmpty()) {
@@ -395,93 +510,24 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
     fun copyLocalFoods(sourceLocale: String, destLocale: String, foods: List<CopyLocalV2>, context: DSLContext) {
         if (foods.isNotEmpty()) {
 
-            val localFoodsQueries = foods.map {
-                context.insertInto(FOODS_LOCAL, FOODS_LOCAL.FOOD_CODE, FOODS_LOCAL.LOCALE_ID,
-                        FOODS_LOCAL.LOCAL_DESCRIPTION, FOODS_LOCAL.SIMPLE_LOCAL_DESCRIPTION, FOODS_LOCAL.VERSION)
-                        .values(it.destCode,
-                                destLocale,
-                                truncateDescription(it.localDescription, it.destCode),
-                                truncateDescription(StringUtils.stripAccents(it.localDescription), it.destCode),
-                                UUID.randomUUID())
+            val sourceFoodCodes = foods.map { it.sourceCode }
+
+            val sourcePortionSizeMethods = getPortionSizeMethods(sourceFoodCodes, sourceLocale, context)
+            val sourceAssociatedFoods = getAssociatedFoods(sourceFoodCodes, sourceLocale, context)
+            val sourceBrands = getBrands(sourceFoodCodes, sourceLocale, context)
+            val sourceNutrientMapping = getNutrientTableCodes(sourceFoodCodes, sourceLocale, context)
+
+            val newLocalFoods = foods.map {
+                NewLocalFoodV2(it.destCode, it.localDescription,
+                        sourceNutrientMapping[it.sourceCode] ?: error("Element not in map"),
+                        sourcePortionSizeMethods[it.sourceCode] ?: error("Element not in map"),
+                        sourceAssociatedFoods[it.sourceCode] ?: error("Element not in map"),
+                        sourceBrands[it.sourceCode] ?: error("Element not in map")
+                )
             }
 
-            val nutrientMappingQueries = foods.map {
-                context.insertInto(FOODS_NUTRIENT_MAPPING, FOODS_NUTRIENT_MAPPING.FOOD_CODE, FOODS_NUTRIENT_MAPPING.LOCALE_ID,
-                        FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_ID, FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_RECORD_ID)
-                        .select(context.select(
-                                inline(it.destCode),
-                                inline(destLocale),
-                                FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_ID,
-                                FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_RECORD_ID)
-                                .from(FOODS_NUTRIENT_MAPPING)
-                                .where(FOODS_NUTRIENT_MAPPING.FOOD_CODE.eq(it.sourceCode).and(FOODS_NUTRIENT_MAPPING.LOCALE_ID.eq(sourceLocale))))
-            }
-
-            context.batch(localFoodsQueries + nutrientMappingQueries).execute()
-
-            val copyTable = name("copy").fields("src_code", "dst_code").`as`(selectFrom(
-                    values(*foods.map {
-                        row(it.sourceCode, it.destCode)
-                    }.toTypedArray())
-            ))
-
-            // FIXME: Performance: No need to copy data via application
-
-            val sourceMethods = context.with(copyTable).select(
-                    copyTable.field("dst_code").coerce(SQLDataType.VARCHAR),
-                    FOODS_PORTION_SIZE_METHODS.ID,
-                    FOODS_PORTION_SIZE_METHODS.FOOD_CODE,
-                    FOODS_PORTION_SIZE_METHODS.LOCALE_ID,
-                    FOODS_PORTION_SIZE_METHODS.METHOD,
-                    FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
-                    FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
-                    FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
-                    FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
-                    .from(FOODS_PORTION_SIZE_METHODS.join(copyTable).on(FOODS_PORTION_SIZE_METHODS.FOOD_CODE.eq(copyTable.field("src_code").coerce(SQLDataType.VARCHAR))))
-                    .where(FOODS_PORTION_SIZE_METHODS.LOCALE_ID.eq(sourceLocale))
-                    .fetchArray()
-
-            val insert1 = context.insertInto(FOODS_PORTION_SIZE_METHODS,
-                    FOODS_PORTION_SIZE_METHODS.FOOD_CODE,
-                    FOODS_PORTION_SIZE_METHODS.LOCALE_ID,
-                    FOODS_PORTION_SIZE_METHODS.METHOD,
-                    FOODS_PORTION_SIZE_METHODS.DESCRIPTION,
-                    FOODS_PORTION_SIZE_METHODS.IMAGE_URL,
-                    FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
-                    FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
-
-            val newMethodIds = sourceMethods.fold(insert1) { q, row ->
-                q.values(row.value1(),
-                        destLocale,
-                        row[FOODS_PORTION_SIZE_METHODS.METHOD],
-                        row[FOODS_PORTION_SIZE_METHODS.DESCRIPTION],
-                        row[FOODS_PORTION_SIZE_METHODS.IMAGE_URL],
-                        row[FOODS_PORTION_SIZE_METHODS.USE_FOR_RECIPES],
-                        row[FOODS_PORTION_SIZE_METHODS.CONVERSION_FACTOR])
-            }.returningResult(FOODS_PORTION_SIZE_METHODS.ID).fetch().intoArray(FOODS_PORTION_SIZE_METHODS.ID)
-
-            val methodCopies = sourceMethods.map { it[FOODS_PORTION_SIZE_METHODS.ID] }.zip(newMethodIds)
-
-            val methodCopyTable = name("copy").fields("src_method_id", "dst_method_id").`as`(selectFrom(
-                    values(*methodCopies.map {
-                        row(it.first, it.second)
-                    }.toTypedArray())
-            ))
-
-            context.with(methodCopyTable).insertInto(FOODS_PORTION_SIZE_METHOD_PARAMS,
-                    FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID,
-                    FOODS_PORTION_SIZE_METHOD_PARAMS.NAME,
-                    FOODS_PORTION_SIZE_METHOD_PARAMS.VALUE)
-                    .select(
-                            context.select(methodCopyTable.field("dst_method_id").coerce(SQLDataType.INTEGER),
-                                    FOODS_PORTION_SIZE_METHOD_PARAMS.NAME,
-                                    FOODS_PORTION_SIZE_METHOD_PARAMS.VALUE)
-                                    .from(methodCopyTable.join(FOODS_PORTION_SIZE_METHOD_PARAMS)
-                                            .on(FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID.eq(methodCopyTable.field("src_method_id").coerce(SQLDataType.INTEGER))))
-                    ).execute()
-
-        } else
-            logger.debug("Empty list")
+            createLocalFoods(newLocalFoods, destLocale, context)
+        }
     }
 
 
@@ -492,7 +538,27 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
     }
 
     fun updateLocalFoods(updates: List<UpdateLocalFoodV2>, localeId: String, context: DSLContext) {
+        updateNutrientTableCodes(updates.map { Pair(it.code, it.nutrientTableCodes) }, localeId, context)
+        updateAssociatedFoods(updates.map { Pair(it.code, it.associatedFoods) }, localeId, context)
+        updateBrands(updates.map { Pair(it.code, it.brandNames) }, localeId, context)
+        updatePortionSizeMethods(updates.map { Pair(it.code, it.portionSize) }, localeId, context)
 
+        val updateQueries = updates.map { update ->
+            context.update(FOODS_LOCAL)
+                    .set(FOODS_LOCAL.FOOD_CODE, update.newCode)
+                    .set(FOODS_LOCAL.LOCAL_DESCRIPTION, truncateDescription(update.localDescription, update.code))
+                    .set(FOODS_LOCAL.SIMPLE_LOCAL_DESCRIPTION, truncateDescription(StringUtils.stripAccents(update.localDescription), update.code))
+                    .set(FOODS_LOCAL.VERSION, UUID.randomUUID())
+                    .where(FOODS_LOCAL.LOCALE_ID.eq(localeId).and(FOODS_LOCAL.FOOD_CODE.eq(update.code).and(FOODS_LOCAL.VERSION.eq(update.baseVersion))))
+        }
+
+        val updateResult = context.batch(updateQueries).execute().toTypedArray()
+
+        val failed = updates.map { it.code }.zip(updateResult).filter { it.second == 0}
+
+        if (failed.isNotEmpty()) {
+            throw IllegalArgumentException("Base versions did not match for the following codes: ${failed.map{ it.first}.joinToString()}. Most likely cause is a concurrent update. Please retry.")
+        }
     }
 
 }
