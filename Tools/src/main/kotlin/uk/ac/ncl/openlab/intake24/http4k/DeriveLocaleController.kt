@@ -1,5 +1,6 @@
 package uk.ac.ncl.openlab.intake24.http4k
 
+import arrow.core.Either
 import com.google.inject.Inject
 import org.http4k.core.MultipartFormBody
 import org.http4k.core.Request
@@ -13,9 +14,12 @@ import uk.ac.ncl.openlab.intake24.tools.DeriveLocaleParseException
 import uk.ac.ncl.openlab.intake24.tools.DeriveLocaleService
 
 class DeriveLocaleController @Inject constructor(private val service: DeriveLocaleService,
-                                                 private val errorUtils: ErrorUtils) {
+                                                 private val errorUtils: ErrorUtils,
+                                                 private val stringCodec: StringCodec) {
 
     private val logger = LoggerFactory.getLogger(DeriveLocaleController::class.java)
+
+    private data class ErrorsResponse(val errors: List<String>)
 
     fun deriveLocale(user: Intake24User, request: Request): Response {
 
@@ -30,9 +34,14 @@ class DeriveLocaleController @Inject constructor(private val service: DeriveLoca
         else {
 
             try {
-                val actions = DeriveLocaleCsvParser.parseTable(file.content, foodCompositionTable)
-                service.deriveLocale(sourceLocale, destLocale, actions)
-                return Response(Status.OK)
+                val (errors, actions) = DeriveLocaleCsvParser.parseTable(file.content, foodCompositionTable)
+
+                if (errors.isNotEmpty())
+                    return Response(Status.BAD_REQUEST).body(stringCodec.encode(ErrorsResponse(errors)))
+                else {
+                    service.deriveLocale(sourceLocale, destLocale, actions)
+                    return Response(Status.OK)
+                }
             } catch (e: DeriveLocaleParseException) {
                 return errorUtils.errorResponse(Status.BAD_REQUEST, e)
             }

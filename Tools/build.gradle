@@ -28,6 +28,7 @@ dependencies {
     implementation("com.opencsv:opencsv:4.6")
 
     implementation("org.apache.commons:commons-lang3:3.9")
+    implementation("io.arrow-kt:arrow-core:0.8.2")
 
     implementation("org.postgresql:postgresql:42.2.5")
 

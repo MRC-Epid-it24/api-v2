@@ -26,6 +26,7 @@ import org.http4k.server.Netty
 import org.jooq.SQLDialect
 import org.jooq.exception.DataAccessException
 import org.jooq.exception.NoDataFoundException
+import org.postgresql.util.PSQLException
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
@@ -33,6 +34,7 @@ import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.TaskStatusManager
 import java.lang.Exception
 import java.net.InetSocketAddress
+import java.sql.SQLException
 import java.time.OffsetDateTime
 
 data class NettyConfig(val host: String, val port: Int) : ServerConfig {
@@ -137,7 +139,7 @@ class CommonExceptionHandler @Inject() constructor(val errorUtils: ErrorUtils) :
                 errorUtils.errorResponse(Status.NOT_FOUND, "Record not found")
             } catch (e: DataAccessException) {
                 logger.error("Database error", e)
-                errorUtils.errorResponse(Status.INTERNAL_SERVER_ERROR, e)
+                errorUtils.errorResponse(Status.INTERNAL_SERVER_ERROR, e.getCause(PSQLException::class.java))
             } catch (e: JsonMappingException) {
                 errorUtils.errorResponse(Status.BAD_REQUEST, e)
             } catch (e: JsonParseException) {
@@ -203,9 +205,9 @@ fun main() {
             "/tasks" bind Method.GET to authenticate(taskStatusController::getTasksList),
 
             "/v2/foods/copy" bind Method.POST to authenticate(foodsController::copyFoods),
-            "/v2/foods/copy-local" bind Method.POST to authenticate (foodsController::copyLocalFoods),
+            "/v2/foods/copy-local" bind Method.POST to authenticate(foodsController::copyLocalFoods),
 
-            "/v2/foods/derive-locale" bind Method.POST to authenticate (deriveLocaleController::deriveLocale),
+            "/v2/foods/derive-locale" bind Method.POST to authenticate(deriveLocaleController::deriveLocale),
 
             "/foods/composition/tables" bind Method.GET to authenticate(fctController::getCompositionTables),
             "/foods/composition/tables" bind Method.POST to authenticate(fctController::createCompositionTable),

@@ -85,7 +85,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                         FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID,
                         FOODS_PORTION_SIZE_METHOD_PARAMS.NAME,
                         FOODS_PORTION_SIZE_METHOD_PARAMS.VALUE)
-                        .from(FOODS_PORTION_SIZE_METHODS)
+                        .from(FOODS_PORTION_SIZE_METHOD_PARAMS)
                         .where(FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID.`in`(ids))
                         .fold(emptyMap<Int, List<PortionSizeMethodParameter>>()) { map, row ->
                             val id = row[FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID]
@@ -95,7 +95,11 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                         }
 
 
-                return portionSizeMethodRows.fold(emptyMap()) { map, row ->
+                val empty = foodCodes.fold(emptyMap<String, List<PortionSizeMethod>>()) { map, code ->
+                    map + Pair(code, emptyList())
+                }
+
+                return portionSizeMethodRows.fold(empty) { map, row ->
 
                     val foodCode = row[FOODS_PORTION_SIZE_METHODS.FOOD_CODE]
                     val methods = map[foodCode] ?: emptyList()
@@ -168,11 +172,17 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
 
         fun getNutrientTableCodes(foodCodes: List<String>, localeId: String, context: DSLContext): Map<String, List<FoodCompositionTableReference>> {
             if (foodCodes.isNotEmpty()) {
+
+                val empty = foodCodes.fold(emptyMap<String, List<FoodCompositionTableReference>>()) { map, code ->
+                    map + Pair(code, emptyList())
+                }
+
+
                 return context.select(FOODS_NUTRIENT_MAPPING.FOOD_CODE, FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_ID, FOODS_NUTRIENT_MAPPING.NUTRIENT_TABLE_RECORD_ID)
                         .from(FOODS_NUTRIENT_MAPPING)
                         .where(FOODS_NUTRIENT_MAPPING.FOOD_CODE.`in`(foodCodes).and(FOODS_NUTRIENT_MAPPING.LOCALE_ID.eq(localeId)))
                         .fetchArray()
-                        .fold(emptyMap()) { map, row ->
+                        .fold(empty) { map, row ->
                             val code = row[FOODS_NUTRIENT_MAPPING.FOOD_CODE]
                             val list = map[code] ?: emptyList()
 
@@ -215,11 +225,16 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
 
         fun getBrands(foodCodes: List<String>, localeId: String, context: DSLContext): Map<String, List<String>> {
             if (foodCodes.isNotEmpty()) {
+
+                val empty = foodCodes.fold(emptyMap<String, List<String>>()) { map, code ->
+                    map + Pair(code, emptyList())
+                }
+
                 return context.select(BRANDS.FOOD_CODE, BRANDS.NAME)
                         .from(BRANDS)
                         .where(BRANDS.FOOD_CODE.`in`(foodCodes).and(BRANDS.LOCALE_ID.eq(localeId)))
                         .fetchArray()
-                        .fold(emptyMap()) { map, row ->
+                        .fold(empty) { map, row ->
                             val code = row[BRANDS.FOOD_CODE]
                             val list = map[code] ?: emptyList()
                             map + Pair(code, list + row[BRANDS.NAME])
@@ -236,7 +251,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
 
                 if (updates.any { it.second.isNotEmpty() }) {
 
-                    val insertQuery1 = context.insertInto(FOODS_NUTRIENT_MAPPING,
+                    val insertQuery1 = context.insertInto(BRANDS,
                             BRANDS.FOOD_CODE,
                             BRANDS.LOCALE_ID,
                             BRANDS.NAME)
@@ -259,6 +274,11 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
 
         fun getAssociatedFoods(foodCodes: List<String>, localeId: String, context: DSLContext): Map<String, List<AssociatedFood>> {
             if (foodCodes.isNotEmpty()) {
+
+                val empty = foodCodes.fold(emptyMap<String, List<AssociatedFood>>()) { map, code ->
+                    map + Pair(code, emptyList())
+                }
+
                 return context.select(ASSOCIATED_FOODS.FOOD_CODE,
                         ASSOCIATED_FOODS.LOCALE_ID,
                         ASSOCIATED_FOODS.ASSOCIATED_FOOD_CODE,
@@ -269,7 +289,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                         .from(ASSOCIATED_FOODS)
                         .where(ASSOCIATED_FOODS.FOOD_CODE.`in`(foodCodes).and(ASSOCIATED_FOODS.LOCALE_ID.eq(localeId)))
                         .fetchArray()
-                        .fold(emptyMap()) { map, row ->
+                        .fold(empty) { map, row ->
                             val code = row[ASSOCIATED_FOODS.FOOD_CODE]
                             val list = map[code] ?: emptyList()
 
@@ -458,13 +478,14 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
     fun copyFoods(foods: List<CopyFoodV2>, context: DSLContext) {
         if (foods.isNotEmpty()) {
 
-            val sourceCodes = foods.map { it.sourceCode }
+            val sourceCodes = foods.map { it.sourceCode }.toSet()
 
             val existingSources = context
                     .select(FOODS.CODE)
                     .from(FOODS)
                     .where(FOODS.CODE.`in`(sourceCodes))
                     .fetchArray(FOODS.CODE)
+                    .toSet()
 
             if (existingSources.size != sourceCodes.size) {
                 throw IllegalArgumentException("Invalid source food codes: ${sourceCodes.minus(existingSources).joinToString()}")
@@ -519,10 +540,10 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
 
             val newLocalFoods = foods.map {
                 NewLocalFoodV2(it.destCode, it.localDescription,
-                        sourceNutrientMapping[it.sourceCode] ?: error("Element not in map"),
-                        sourcePortionSizeMethods[it.sourceCode] ?: error("Element not in map"),
-                        sourceAssociatedFoods[it.sourceCode] ?: error("Element not in map"),
-                        sourceBrands[it.sourceCode] ?: error("Element not in map")
+                        sourceNutrientMapping[it.sourceCode] ?: error("Expected element not in map"),
+                        sourcePortionSizeMethods[it.sourceCode] ?: error("Expected element not in map"),
+                        sourceAssociatedFoods[it.sourceCode] ?: error("Expected element not in map"),
+                        sourceBrands[it.sourceCode] ?: error("Expected element not in map")
                 )
             }
 
@@ -554,10 +575,10 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
 
         val updateResult = context.batch(updateQueries).execute().toTypedArray()
 
-        val failed = updates.map { it.code }.zip(updateResult).filter { it.second == 0}
+        val failed = updates.map { it.code }.zip(updateResult).filter { it.second == 0 }
 
         if (failed.isNotEmpty()) {
-            throw IllegalArgumentException("Base versions did not match for the following codes: ${failed.map{ it.first}.joinToString()}. Most likely cause is a concurrent update. Please retry.")
+            throw IllegalArgumentException("Base versions did not match for the following codes: ${failed.map { it.first }.joinToString()}. Most likely cause is a concurrent update. Please retry.")
         }
     }
 
