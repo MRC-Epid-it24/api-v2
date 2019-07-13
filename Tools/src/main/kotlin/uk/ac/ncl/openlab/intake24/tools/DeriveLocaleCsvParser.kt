@@ -11,7 +11,7 @@ data class FoodCompositionTableReference(val tableId: String, val recordId: Stri
 data class FoodDescription(val englishDescription: String, val localDescription: String)
 
 sealed class FoodAction {
-    data class Include(val foodCode: String, val localDescription: String?, val copies: List<FoodDescription>, val localFctCode: FoodCompositionTableReference?) : FoodAction()
+    data class Include(val foodCode: String, val localDescription: String, val copies: List<FoodDescription>, val localFctCode: FoodCompositionTableReference?) : FoodAction()
     data class New(val descriptions: List<FoodDescription>, val fctCode: FoodCompositionTableReference, val recipesOnly: Boolean) : FoodAction()
 }
 

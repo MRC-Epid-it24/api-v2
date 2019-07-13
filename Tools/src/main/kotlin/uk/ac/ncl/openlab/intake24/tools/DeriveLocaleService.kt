@@ -6,11 +6,14 @@ import com.google.inject.name.Named
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.services.*
+import uk.ac.ncl.openlab.intake24.services.LocalesService.Companion.getLocale
+import java.lang.RuntimeException
 import java.time.Year
 import java.util.regex.Pattern
 
 @Singleton
 class DeriveLocaleService @Inject() constructor(@Named("foods") private val foodDatabase: DatabaseClient,
+                                                private val localesService: LocalesService,
                                                 private val foodsService: FoodsServiceV2) {
 
     private val logger = LoggerFactory.getLogger(DeriveLocaleService::class.java)
@@ -74,6 +77,26 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
             return foods
     }
 
+    private fun makeUniqueCodeAndSave(englishDescription: String, existing: MutableSet<String>): String {
+
+        fun findUnique(attemptsLeft: Int = 10, candidate: String = makeCode(englishDescription)): String {
+            return if (attemptsLeft == 0)
+                throw RuntimeException("Failed to produce unique code in 10 attempts")
+            else {
+                if (existing.contains(candidate))
+                    findUnique(attemptsLeft - 1, deduplicateCode(candidate))
+                else
+                    candidate
+            }
+        }
+
+
+        val code = findUnique()
+        existing.add(code)
+        return code
+    }
+
+
     fun deriveLocale(sourceLocaleId: String, destLocaleId: String, actions: List<FoodAction>) {
 
         val newFoods = mutableListOf<NewFoodV2>()
@@ -84,19 +107,21 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
 
         val newCodes = mutableSetOf<String>()
 
+        val destLocale = foodDatabase.runTransaction {
+            getLocale(destLocaleId, it)
+        }
+
+        if (destLocale == null)
+            throw IllegalArgumentException("Locale $destLocaleId does not exist")
+
+
         actions.filterIsInstance<FoodAction.New>().forEach { newFood ->
             newFood.descriptions.map {
 
-                var code = makeCode(it.englishDescription)
-
-                while (newCodes.contains(code)) {
-                    code = deduplicateCode(code)
-                }
-
-                newCodes.add(code)
+                val code = makeUniqueCodeAndSave(it.englishDescription, newCodes)
 
                 val attributes = InheritableAttributes(null, null, null,
-                        if (newFood.recipesOnly) FoodsServiceV2.USE_AS_RECIPE_INREDIENT else FoodsServiceV2.USE_AS_REGULAR_FOOD)
+                        if (newFood.recipesOnly) FoodsServiceV2.USE_AS_RECIPE_INGREDIENT else FoodsServiceV2.USE_AS_REGULAR_FOOD)
 
                 newFoods.add(NewFoodV2(code, it.englishDescription, 1, attributes))
                 newLocalFoods.add(NewLocalFoodV2(code, it.localDescription, emptyList()))
@@ -104,13 +129,19 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
             }
         }
 
-
         actions.filterIsInstance<FoodAction.Include>().forEach { includeFood ->
-            newLocalFoods.add(NewLocalFoodV2(includeFood.foodCode, includeFood.localDescription,
-                    if (includeFood.localFctCode != null) listOf(includeFood.localFctCode) else emptyList()))
+
+            val nutrientTableCodes = if (includeFood.localFctCode != null) listOf(includeFood.localFctCode) else emptyList()
+
+            if (destLocale.prototypeLocale == sourceLocaleId) {
+                newLocalFoods.add(NewLocalFoodV2(includeFood.foodCode, includeFood.localDescription,
+                        nutrientTableCodes, emptyList(), emptyList(), emptyList()))
+            } else {
+                localCopies.add(CopyLocalV2(includeFood.foodCode, includeFood.foodCode, includeFood.localDescription))
+            }
 
             includeFood.copies.forEach {
-                val copyCode = makeCode(it.englishDescription)
+                val copyCode = makeUniqueCodeAndSave(it.englishDescription, newCodes)
 
                 foodCopies.add(CopyFoodV2(includeFood.foodCode, copyCode, it.englishDescription))
                 localCopies.add(CopyLocalV2(includeFood.foodCode, copyCode, it.localDescription))
