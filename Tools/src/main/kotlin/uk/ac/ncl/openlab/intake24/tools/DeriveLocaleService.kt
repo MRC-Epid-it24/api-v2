@@ -50,31 +50,33 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
         }
     }
 
-    private fun ensureUniqueInDatabase(foods: List<NewFoodV2>, attemptsLeft: Int = 10): List<NewFoodV2> {
+    private fun ensureUniqueInDatabase(codes: Set<String>): Map<String, String> {
 
-        if (attemptsLeft == 0)
-            throw IllegalArgumentException("Failed to get rid of duplicates in 10 attempts")
+        // FIXME: No guarantee that the deduplicated codes are unique
 
-        val codes = foods.map { it.code }.toSet()
+        fun checkAndRetry(substitutions: List<Pair<String, String>>, attemptsLeft: Int = 10): List<Pair<String, String>> {
+            if (attemptsLeft == 0)
+                throw IllegalArgumentException("Failed to get rid of duplicates in 10 attempts")
+            else {
+                val duplicateCodes = foodsService.getDuplicateCodes(substitutions.map { it.second }.toSet())
+
+                if (duplicateCodes.isEmpty())
+                    return substitutions
+                else
+                    return checkAndRetry(substitutions.map {
+                        if (duplicateCodes.contains(it.second))
+                            Pair(it.first, deduplicateCode(it.second))
+                        else
+                            it
+                    })
+            }
+        }
+
         val duplicateCodes = foodsService.getDuplicateCodes(codes)
 
-        if (duplicateCodes.isNotEmpty()) {
-            logger.debug("Duplicate codes exist, attempting to fix ($attemptsLeft attempts left)")
+        val substitutions = duplicateCodes.map { Pair(it, deduplicateCode(it)) }
 
-            val replacements = deduplicateCodes(duplicateCodes)
-
-            val replaced = foods.map {
-                val rep = replacements[it.code]
-                if (rep != null)
-                    it.copy(code = rep)
-                else
-                    it
-            }
-
-            return ensureUniqueInDatabase(replaced, attemptsLeft - 1)
-
-        } else
-            return foods
+        return checkAndRetry(substitutions).toMap()
     }
 
     private fun makeUniqueCodeAndRemember(englishDescription: String, existing: MutableSet<String>): String {
@@ -86,8 +88,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
                 if (existing.contains(candidate)) {
                     logger.debug("Tried $candidate, already taken")
                     findUnique(attemptsLeft - 1, deduplicateCode(candidate))
-                }
-                else {
+                } else {
                     logger.debug("$candidate is unique")
                     candidate
                 }
@@ -107,7 +108,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
         val newLocalFoods = mutableListOf<NewLocalFoodV2>()
         val foodCopies = mutableListOf<CopyFoodV2>()
         val localCopies = mutableListOf<CopyLocalV2>()
-        val foodsCodesToInclude = mutableListOf<String>()
+        val foodCodesToInclude = mutableListOf<String>()
 
         val newCodes = mutableSetOf<String>()
 
@@ -132,7 +133,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
                 newFoods.add(NewFoodV2(code, it.englishDescription, 1, attributes))
                 newLocalFoods.add(NewLocalFoodV2(code, it.localDescription, nutrientTableCodes, emptyList(),
                         emptyList(), emptyList()))
-                foodsCodesToInclude.add(code)
+                foodCodesToInclude.add(code)
             }
         }
 
@@ -147,22 +148,33 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
                 localCopies.add(CopyLocalV2(includeFood.foodCode, includeFood.foodCode, includeFood.localDescription))
             }
 
+            foodCodesToInclude.add(includeFood.foodCode)
+
             includeFood.copies.forEach {
                 val copyCode = makeUniqueCodeAndRemember(it.englishDescription, newCodes)
 
                 foodCopies.add(CopyFoodV2(includeFood.foodCode, copyCode, it.englishDescription))
                 localCopies.add(CopyLocalV2(includeFood.foodCode, copyCode, it.localDescription))
+                foodCodesToInclude.add(copyCode)
             }
         }
 
-        val newFoodsWithUniqueCodes = ensureUniqueInDatabase(newFoods)
+        val codeSubstitutions = ensureUniqueInDatabase(newFoods.map { it.code }.toSet())
+
+        val newFoodsWithUniqueCodes = newFoods.map {
+            val s = codeSubstitutions[it.code]
+            if (s == null)
+                it
+            else
+                it.copy(code = s)
+        }
 
         foodDatabase.runTransaction {
             foodsService.createFoods(newFoodsWithUniqueCodes, it)
             foodsService.copyFoods(foodCopies, it)
             foodsService.createLocalFoods(newLocalFoods, destLocaleId, it)
             foodsService.copyLocalFoods(sourceLocaleId, destLocaleId, localCopies, it)
-            foodsService.addFoodsToLocale(foodsCodesToInclude, destLocaleId, it)
+            foodsService.addFoodsToLocale(foodCodesToInclude, destLocaleId, it)
         }
     }
 }
