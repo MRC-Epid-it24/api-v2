@@ -204,10 +204,9 @@ fun main() {
             "/foods/frequencies" bind Method.POST to authenticate(restrictToRoles(listOf("superuser"), exportController::exportFrequencies)),
             "/tasks" bind Method.GET to authenticate(taskStatusController::getTasksList),
 
-            "/v2/foods/copy" bind Method.POST to authenticate(foodsController::copyFoods),
-            "/v2/foods/copy-local" bind Method.POST to authenticate(foodsController::copyLocalFoods),
-
-            "/v2/foods/derive-locale" bind Method.POST to authenticate(deriveLocaleController::deriveLocale),
+            "/foods/copy" bind Method.POST to authenticate(foodsController::copyFoods),
+            "/foods/copy-local" bind Method.POST to authenticate(foodsController::copyLocalFoods),
+            "/foods/derive-locale" bind Method.POST to authenticate(deriveLocaleController::deriveLocale),
 
             "/foods/composition/tables" bind Method.GET to authenticate(fctController::getCompositionTables),
             "/foods/composition/tables" bind Method.POST to authenticate(fctController::createCompositionTable),
