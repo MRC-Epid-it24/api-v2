@@ -5,10 +5,8 @@ import com.google.inject.Singleton
 import com.google.inject.name.Named
 
 import org.apache.commons.lang3.StringUtils
-import org.jooq.Batch
 import org.jooq.DSLContext
 import org.jooq.impl.DSL.*
-import org.jooq.impl.SQLDataType
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableReference
@@ -48,6 +46,15 @@ data class PortionSizeMethod(val method: String, val description: String, val im
 data class UpdateLocalFoodV2(val code: String, val baseVersion: UUID?, val newCode: String, val localDescription: String?,
                              val nutrientTableCodes: List<FoodCompositionTableReference>, val portionSize: List<PortionSizeMethod>,
                              val associatedFoods: List<AssociatedFood>, val brandNames: List<String>)
+
+
+data class CategoryHeader(val code: String, val englishDescription: String, val localDescription: String?, val isHidden: Boolean)
+
+
+data class FoodHeader(val code: String, val englishDescription: String, val localDescription: String?)
+
+
+data class CategoryContents(val foods: List<FoodHeader>, val subcategories: List<CategoryHeader>)
 
 
 @Singleton
@@ -350,6 +357,11 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                     deleteQuery.execute()
             }
         }
+
+        fun validateLocaleId(localeId: String, context: DSLContext) {
+            if (context.selectOne().from(LOCALES).where(LOCALES.ID.eq(localeId)).fetchAny() == null)
+                throw IllegalArgumentException("Locale $localeId does not exist")
+        }
     }
 
     private val logger = LoggerFactory.getLogger(FoodsServiceV2::class.java)
@@ -581,5 +593,87 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
             throw IllegalArgumentException("Base versions did not match for the following codes: ${failed.map { it.first }.joinToString()}. Most likely cause is a concurrent update. Please retry.")
         }
     }
+
+    fun getRootCategories(localeId: String): List<CategoryHeader> {
+        return foodDatabase.runTransaction {
+
+            validateLocaleId(localeId, it)
+
+            val c = CATEGORIES.`as`("c")
+
+            // A root category is a category that is
+            //
+            // (1) not a subcategory of any other category
+            // (2) is a subcategory only of hidden categories
+            //
+            // Since (1) implies (2) it is only necessary to check (2)
+
+            it.selectDistinct(c.CODE, c.DESCRIPTION, c.IS_HIDDEN, CATEGORIES_LOCAL.LOCAL_DESCRIPTION)
+                    .from(c.leftJoin(CATEGORIES_CATEGORIES).on(c.CODE.eq(CATEGORIES_CATEGORIES.SUBCATEGORY_CODE))
+                            .leftJoin(CATEGORIES_LOCAL).on(c.CODE.eq(CATEGORIES_LOCAL.CATEGORY_CODE)))
+                    .where(notExists(
+                            it.selectOne().from(CATEGORIES_CATEGORIES.innerJoin(CATEGORIES).on(CATEGORIES_CATEGORIES.CATEGORY_CODE.eq(CATEGORIES.CODE)))
+                                    .where(not(CATEGORIES.IS_HIDDEN)).and(CATEGORIES_CATEGORIES.SUBCATEGORY_CODE.eq(c.CODE))))
+                    .and(CATEGORIES_LOCAL.LOCALE_ID.eq(localeId))
+                    .orderBy(CATEGORIES_LOCAL.LOCAL_DESCRIPTION)
+                    .fetch {
+                        CategoryHeader(it[c.CODE], it[c.DESCRIPTION], it[CATEGORIES_LOCAL.LOCAL_DESCRIPTION], it[c.IS_HIDDEN])
+                    }
+        }
+    }
+
+
+    fun getUncategorisedFoods(localeId: String): List<FoodHeader> {
+        return foodDatabase.runTransaction {
+
+            validateLocaleId(localeId, it)
+
+            it.select(FOODS.CODE, FOODS.DESCRIPTION, FOODS_LOCAL.LOCAL_DESCRIPTION)
+                    .from(FOODS.innerJoin(FOODS_LOCAL_LISTS).on(FOODS.CODE.eq(FOODS_LOCAL_LISTS.FOOD_CODE))
+                            .leftJoin(FOODS_LOCAL).on(FOODS.CODE.eq(FOODS_LOCAL.FOOD_CODE))
+                            .leftJoin(FOODS_CATEGORIES).on(FOODS.CODE.eq(FOODS_CATEGORIES.FOOD_CODE)))
+                    .where(FOODS_CATEGORIES.CATEGORY_CODE.isNull)
+                    .and(FOODS_LOCAL_LISTS.LOCALE_ID.eq(localeId))
+                    .and(FOODS_LOCAL.LOCALE_ID.eq(localeId))
+                    .orderBy(FOODS_LOCAL.LOCAL_DESCRIPTION)
+                    .fetch {
+                        FoodHeader(it[FOODS.CODE], it[FOODS.DESCRIPTION], it[FOODS_LOCAL.LOCAL_DESCRIPTION])
+                    }
+        }
+    }
+
+    fun getCategoryContents(categoryCode: String, localeId: String): CategoryContents {
+        return foodDatabase.runTransaction { context ->
+
+            val fl = FOODS_LOCAL.`as`("fl")
+            val flp = FOODS_LOCAL.`as`("flp")
+
+            val foodHeaders = context.select(FOODS.CODE, FOODS.DESCRIPTION, coalesce(fl.LOCAL_DESCRIPTION, flp.LOCAL_DESCRIPTION).`as`("local_desc"))
+                    .from(
+                            FOODS_CATEGORIES.innerJoin(FOODS_LOCAL_LISTS).on(FOODS_CATEGORIES.FOOD_CODE.eq(FOODS_LOCAL_LISTS.FOOD_CODE)).and(FOODS_LOCAL_LISTS.LOCALE_ID.eq(localeId))
+                                    .leftJoin(FOODS).on(FOODS.CODE.eq(FOODS_CATEGORIES.FOOD_CODE))
+                                    .leftJoin(fl).on(FOODS.CODE.eq(fl.FOOD_CODE)).and(fl.LOCALE_ID.eq(localeId))
+                                    .leftJoin(flp).on(FOODS.CODE.eq(flp.FOOD_CODE)).and(flp.LOCALE_ID.`in`(context.select(LOCALES.PROTOTYPE_LOCALE_ID).from(LOCALES).where(LOCALES.ID.eq(localeId))))
+                    )
+                    .where(FOODS_CATEGORIES.CATEGORY_CODE.eq(categoryCode))
+                    .orderBy(coalesce(fl.LOCAL_DESCRIPTION, flp.LOCAL_DESCRIPTION))
+                    .fetch {
+                        FoodHeader(it[FOODS.CODE], it[FOODS.DESCRIPTION], it.get("local_desc", String::class.java))
+                    }
+
+            val categoryHeaders = context.select(CATEGORIES.CODE, CATEGORIES.DESCRIPTION, CATEGORIES_LOCAL.LOCAL_DESCRIPTION, CATEGORIES.IS_HIDDEN)
+                    .from(
+                            CATEGORIES_CATEGORIES.leftJoin(CATEGORIES).on(CATEGORIES_CATEGORIES.SUBCATEGORY_CODE.eq(CATEGORIES.CODE))
+                                    .leftJoin(CATEGORIES_LOCAL).on(CATEGORIES_CATEGORIES.SUBCATEGORY_CODE.eq(CATEGORIES_LOCAL.CATEGORY_CODE).and(CATEGORIES_LOCAL.LOCALE_ID.eq(localeId))))
+                    .where(CATEGORIES_CATEGORIES.CATEGORY_CODE.eq(categoryCode))
+                    .orderBy(CATEGORIES_LOCAL.LOCAL_DESCRIPTION)
+                    .fetch {
+                        CategoryHeader(it[CATEGORIES.CODE], it[CATEGORIES.DESCRIPTION], it[CATEGORIES_LOCAL.LOCAL_DESCRIPTION], it[CATEGORIES.IS_HIDDEN])
+                    }
+
+            CategoryContents(foodHeaders, categoryHeaders)
+        }
+    }
+
 
 }
