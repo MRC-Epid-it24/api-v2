@@ -110,6 +110,6 @@ application {
 }
 
 shadowJar {
-    archiveBaseName = "intake24-tools2"
+    archiveBaseName = "intake24-api-v2"
     version = "1.0.0"
 }
