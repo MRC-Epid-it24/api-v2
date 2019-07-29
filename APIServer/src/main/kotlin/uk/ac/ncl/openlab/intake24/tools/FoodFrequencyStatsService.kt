@@ -10,7 +10,7 @@ import kotlinx.coroutines.async
 import uk.ac.ncl.intake24.secureurl.SecureURLService
 import uk.ac.ncl.openlab.intake24.FoodsCache
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
-import uk.ncl.ac.uk.intake24.systemsql.Tables.*
+import uk.ac.ncl.openlab.intake24.systemsql.Tables.*
 import java.io.FileWriter
 import java.nio.file.Files
 import java.nio.file.Path

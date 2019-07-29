@@ -4,10 +4,10 @@ import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.google.inject.name.Named
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
-import uk.ncl.ac.uk.intake24.foodsql.Tables.*
-import uk.ncl.ac.uk.intake24.foodsql.tables.pojos.Foods
-import uk.ncl.ac.uk.intake24.foodsql.tables.pojos.FoodsLocal
-import uk.ncl.ac.uk.intake24.foodsql.tables.pojos.FoodsLocalLists
+import uk.ac.ncl.openlab.intake24.foodsql.Tables.*
+import uk.ac.ncl.openlab.intake24.foodsql.tables.pojos.Foods
+import uk.ac.ncl.openlab.intake24.foodsql.tables.pojos.FoodsLocal
+import uk.ac.ncl.openlab.intake24.foodsql.tables.pojos.FoodsLocalLists
 
 import java.util.*
 

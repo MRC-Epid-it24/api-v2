@@ -5,8 +5,8 @@ import com.google.inject.Singleton
 import com.google.inject.name.Named
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
-import uk.ncl.ac.uk.intake24.foodsql.Keys
-import uk.ncl.ac.uk.intake24.foodsql.Tables
+import uk.ac.ncl.openlab.intake24.foodsql.Keys
+import uk.ac.ncl.openlab.intake24.foodsql.Tables
 
 
 data class FoodCompositionTableHeader(val id: String, val description: String)

@@ -7,7 +7,7 @@ import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.google.inject.name.Named
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
-import uk.ncl.ac.uk.intake24.systemsql.Tables
+import uk.ac.ncl.openlab.intake24.systemsql.Tables
 import java.time.OffsetDateTime
 
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "status")

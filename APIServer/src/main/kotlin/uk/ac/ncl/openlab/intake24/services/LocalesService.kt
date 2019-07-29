@@ -6,7 +6,7 @@ import com.google.inject.name.Named
 import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
-import uk.ncl.ac.uk.intake24.foodsql.Tables.LOCALES
+import uk.ac.ncl.openlab.intake24.foodsql.Tables.LOCALES
 
 
 data class Locale(val id: String, val englishName: String, val localName: String, val respondentLanguage: String,

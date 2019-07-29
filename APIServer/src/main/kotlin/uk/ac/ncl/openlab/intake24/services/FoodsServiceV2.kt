@@ -10,7 +10,7 @@ import org.jooq.impl.DSL.*
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableReference
-import uk.ncl.ac.uk.intake24.foodsql.Tables.*
+import uk.ac.ncl.openlab.intake24.foodsql.Tables.*
 import java.util.*
 
 
