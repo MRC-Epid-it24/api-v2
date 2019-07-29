@@ -1,0 +1,24 @@
+plugins {
+    id("application")
+}
+
+version = "1.0"
+
+dependencies {
+    implementation("com.typesafe:config:1.3.4")
+    implementation("org.flywaydb:flyway-core:6.0.0-beta2")
+    implementation("org.postgresql:postgresql:$postgres_driver_version")
+    implementation("ch.qos.logback:logback-classic:1.2.3")
+}
+
+task migrateSystem(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    main = "uk.ac.ncl.openlab.intake24.db.MigrateSystemDatabaseKt"
+    systemProperties = System.properties
+}
+
+task migrateFoods(type: JavaExec) {
+    classpath = sourceSets.main.runtimeClasspath
+    main = "uk.ac.ncl.openlab.intake24.db.MigrateFoodsDatabaseKt"
+    systemProperties = System.properties
+}
