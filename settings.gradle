@@ -1,4 +1,4 @@
-rootProject.name = "intake24-tools"
+rootProject.name = "intake24-api-v2"
 
 include "SharedStorageAPI"
 include "SharedStorageSimple"
