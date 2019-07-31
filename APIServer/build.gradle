@@ -49,9 +49,9 @@ jooq {
     foods(sourceSets.main) {
         jdbc {
             driver = "org.postgresql.Driver"
-            url = "jdbc:postgresql://192.168.56.2:5432/intake24_foods"
-            user = "intake24"
-            password = "intake24"
+            url = jooqFoodDatabaseURL
+            user = jooqFoodDatabaseUser
+            password = jooqFoodDatabasePassword
         }
         generator {
             name = "org.jooq.codegen.DefaultGenerator"
@@ -78,9 +78,9 @@ jooq {
     system(sourceSets.main) {
         jdbc {
             driver = "org.postgresql.Driver"
-            url = "jdbc:postgresql://192.168.56.2:5432/intake24_system"
-            user = "intake24"
-            password = "intake24"
+            url = jooqSystemDatabaseURL
+            user = jooqSystemDatabaseUser
+            password = jooqSystemDatabasePassword
         }
         generator {
             name = "org.jooq.codegen.DefaultGenerator"
@@ -113,3 +113,6 @@ shadowJar {
     archiveBaseName = "intake24-api-v2"
     version = "1.0.0"
 }
+
+compileKotlin.dependsOn generateSystemJooqSchemaSource
+compileKotlin.dependsOn generateFoodsJooqSchemaSource

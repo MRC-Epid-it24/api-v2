@@ -1,0 +1,7 @@
+jooqSystemDatabaseUrl = jdbc:postgresql://192.168.56.2:5432/intake24_system
+jooqSystemDatabaseUser = intake24
+jooqSystemDatabasePassword = intake24
+
+jooqFoodDatabaseUrl = jdbc:postgresql://192.168.56.2:5432/intake24_foods
+jooqFoodDatabaseUser = intake24
+jooqFoodDatabasePassword = intake24
