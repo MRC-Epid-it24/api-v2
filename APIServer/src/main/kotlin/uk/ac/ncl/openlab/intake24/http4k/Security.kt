@@ -4,15 +4,44 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.exceptions.*
 import com.auth0.jwt.interfaces.Payload
+import com.google.inject.Inject
 import org.http4k.core.HttpHandler
 import org.http4k.core.Request
 import org.http4k.core.Response
 import org.http4k.core.Status
 import org.slf4j.LoggerFactory
 
+object Intake24Roles {
+    val superuser = "superuser"
+
+    val globalSupport = "globalsupport"
+
+    val surveyAdmin = "surveyadmin"
+
+    val foodsAdmin = "foodsadmin"
+
+    val imagesAdmin = "imagesadmin"
+
+    val respondentSuffix = "/respondent"
+
+    val staffSuffix = "/staff"
+
+    val foodDatabaseMaintainerPrefix = "fdbm/"
+
+
+    fun surveyStaff(surveyId: String) = "$surveyId$staffSuffix"
+
+    fun surveySupport(surveyId: String) = "$surveyId/support"
+
+    fun surveyRespondent(surveyId: String) = "$surveyId$respondentSuffix"
+
+    fun foodDatabaseMaintainer(localeId: String) = "$foodDatabaseMaintainerPrefix$localeId"
+}
 
 data class Intake24User(val userId: Int, val roles: List<String>) {
     companion object {
+
+
         fun fromJWTPayload(payload: Payload): Intake24User {
 
             val userId = payload.claims["userId"]!!.asInt()
@@ -25,13 +54,17 @@ data class Intake24User(val userId: Int, val roles: List<String>) {
             return Intake24User(userId, ktRoles)
         }
     }
+
+    fun hasRole(role: String): Boolean {
+        return roles.contains(role)
+    }
 }
 
 typealias AuthenticatedHttpHandler = (Intake24User, Request) -> Response
 
-class Intake24AuthHandler(secret: String) {
+class Intake24Authenticator(secret: String) {
 
-    private val logger = LoggerFactory.getLogger(Intake24AuthHandler::class.java)
+    private val logger = LoggerFactory.getLogger(Intake24Authenticator::class.java)
 
     private val verifier = JWT.require(Algorithm.HMAC256(secret)).withIssuer("intake24").build()
 
@@ -82,11 +115,22 @@ class Intake24AuthHandler(secret: String) {
     }
 }
 
-fun restrictToRoles(roles: List<String>, next: AuthenticatedHttpHandler): AuthenticatedHttpHandler =
-        { user, request ->
-            if (roles.any { user.roles.contains(it) }) {
-                next(user, request)
-            } else {
-                Response(Status.FORBIDDEN)
+class Security @Inject() constructor(private val authenticate: Intake24Authenticator) {
+
+    fun allowAnyAuthenticated(requestHandler: AuthenticatedHttpHandler): HttpHandler = authenticate(requestHandler)
+
+    fun check(isAllowed: (user: Intake24User, request: Request) -> Boolean, requestHandler: AuthenticatedHttpHandler): HttpHandler =
+            authenticate { user, request ->
+                if (user.hasRole(Intake24Roles.superuser) || isAllowed(user, request)) {
+                    requestHandler(user, request)
+                } else {
+                    Response(Status.FORBIDDEN)
+                }
             }
-        }
+
+    fun allowAnyOf(roles: List<String>, requestHandler: AuthenticatedHttpHandler): HttpHandler =
+            check({ user, _ -> roles.any { user.roles.contains(it) } }, requestHandler)
+
+    fun allowFoodAdmins(requestHandler: AuthenticatedHttpHandler): HttpHandler =
+            allowAnyOf(listOf(Intake24Roles.foodsAdmin), requestHandler)
+}

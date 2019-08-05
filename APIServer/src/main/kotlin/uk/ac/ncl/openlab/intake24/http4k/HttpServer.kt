@@ -1,11 +1,9 @@
 package uk.ac.ncl.openlab.intake24.http4k
 
 import com.fasterxml.jackson.core.JsonParseException
-import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonMappingException
 import com.google.inject.*
 import com.google.inject.name.Names
-import com.sun.security.ntlm.Server
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigFactory
 import io.netty.bootstrap.ServerBootstrap
@@ -18,23 +16,19 @@ import io.netty.handler.codec.http.HttpServerCodec
 import org.http4k.core.*
 import org.http4k.filter.CorsPolicy
 import org.http4k.filter.ServerFilters
-import org.http4k.routing.bind
-import org.http4k.routing.path
-import org.http4k.routing.routes
-import org.http4k.server.*
-import org.http4k.server.Netty
+import org.http4k.server.Http4kChannelHandler
+import org.http4k.server.Http4kServer
+import org.http4k.server.ServerConfig
+import org.http4k.server.asServer
 import org.jooq.SQLDialect
 import org.jooq.exception.DataAccessException
 import org.jooq.exception.NoDataFoundException
 import org.postgresql.util.PSQLException
-import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.TaskStatusManager
-import java.lang.Exception
 import java.net.InetSocketAddress
-import java.sql.SQLException
 import java.time.OffsetDateTime
 
 data class NettyConfig(val host: String, val port: Int) : ServerConfig {
@@ -173,6 +167,7 @@ fun main() {
             bind(Config::class.java).toInstance(config)
             bind(DatabaseClient::class.java).annotatedWith(Names.named("system")).toInstance(systemDatabase)
             bind(DatabaseClient::class.java).annotatedWith(Names.named("foods")).toInstance(foodsDatabase)
+            bind(Intake24Authenticator::class.java).toInstance(Intake24Authenticator(config.getString("authentication.jwtSecret")))
         }
     }
 
@@ -182,45 +177,11 @@ fun main() {
 
     val injector = Guice.createInjector(modules + coreModule)
 
-    val authenticate = Intake24AuthHandler(config.getString("authentication.jwtSecret"))
-
-    val taskStatusController = injector.getInstance(TaskStatusController::class.java)
-
-    val exportController = injector.getInstance(FoodFrequencyStatsController::class.java)
-
-    val foodsController = injector.getInstance(FoodsController::class.java)
-
-    val deriveLocaleController = injector.getInstance(DeriveLocaleController::class.java)
-
-    val fileDownloadController = injector.getInstance(LocalSecureURLController::class.java)
-
-    val fctController = injector.getInstance(FoodCompositionTableController::class.java)
-
     val unhandledExceptionHandler = injector.getInstance(UnhandledExceptionHandler::class.java)
 
     val commonExceptionHandler = injector.getInstance(CommonExceptionHandler::class.java)
 
-    val router = routes(
-            "/foods/frequencies" bind Method.POST to authenticate(restrictToRoles(listOf("superuser"), exportController::exportFrequencies)),
-            "/tasks" bind Method.GET to authenticate(taskStatusController::getTasksList),
-
-            "/foods/admin/{localeId}/root-categories" bind Method.GET to authenticate(foodsController::getRootCategories),
-            "/foods/admin/{localeId}/uncategorised-foods" bind Method.GET to authenticate(foodsController::getUncategorisedFoods),
-            "/foods/admin/{localeId}/categories/{category}/contents" bind Method.GET to authenticate(foodsController::getCategoryContents),
-
-            "/foods/copy" bind Method.POST to authenticate(foodsController::copyFoods),
-            "/foods/copy-local" bind Method.POST to authenticate(foodsController::copyLocalFoods),
-            "/foods/derive-locale" bind Method.POST to authenticate(deriveLocaleController::deriveLocale),
-
-            "/foods/composition/tables" bind Method.GET to authenticate(fctController::getCompositionTables),
-            "/foods/composition/tables" bind Method.POST to authenticate(fctController::createCompositionTable),
-            "/foods/composition/tables/{tableId}" bind Method.GET to authenticate(fctController::getCompositionTable),
-            "/foods/composition/tables/{tableId}/csv" bind Method.PATCH to authenticate(fctController::uploadCsv),
-            "/foods/composition/tables/{tableId}" bind Method.PATCH to authenticate(fctController::updateCompositionTable),
-
-            "/foods/composition/nutrients" bind Method.GET to authenticate(fctController::getNutrientTypes),
-            "/files/download" bind Method.GET to fileDownloadController::download
-    )
+    val routes = injector.getInstance(Routes::class.java)
 
     val corsPolicy = CorsPolicy(listOf("*"), listOf("X-Auth-Token", "Content-Type"), Method.values().toList())
 
@@ -229,7 +190,7 @@ fun main() {
                     .then(unhandledExceptionHandler)
                     .then(commonExceptionHandler)
                     .then(DefaultResponseHeaders)
-                    .then(router)
+                    .then(routes.router)
 
     val host = config.getString("http.host")
     val port = config.getInt("http.port")
