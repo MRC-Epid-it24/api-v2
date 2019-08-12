@@ -1,6 +1,7 @@
 package uk.ac.ncl.openlab.intake24.tools
 
 import com.opencsv.CSVReader
+import uk.ac.ncl.openlab.intake24.tools.csvutils.offsetToExcelColumn
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
@@ -13,25 +14,6 @@ data class CsvParseResult(val rows: List<FoodCompositionTableRecord>, val warnin
 class CsvParseException(message: String, cause: Throwable) : Exception(message, cause)
 
 object FoodCompositionCsvParser {
-
-    private val EXCEL_COLUMN_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray()
-
-    private fun offsetToExcelColumn(offset_: Int): String {
-        val sb = StringBuilder()
-        var offset = offset_
-
-        while (offset > (EXCEL_COLUMN_CHARS.size - 1)) {
-            val d = offset / EXCEL_COLUMN_CHARS.size - 1
-            val rem = offset % EXCEL_COLUMN_CHARS.size
-
-            sb.append(EXCEL_COLUMN_CHARS[rem])
-            offset = d
-        }
-
-        sb.append(EXCEL_COLUMN_CHARS[offset])
-        sb.reverse()
-        return sb.toString()
-    }
 
 
     private fun parseRow(row: Array<String>, rowIndex: Int, mapping: FoodCompositionCsvMapping, nutrientTypeDescriptions: Map<Int, String>): Pair<FoodCompositionTableRecord, List<String>> {
