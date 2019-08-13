@@ -26,13 +26,13 @@ object DeriveLocaleSABCsvParser {
     private val CATEGORIES_COLUMN_COUNT = 10
     private val CATEGORIES_NULL_VALUE = "0"
 
-    private val LOCAL_NAME_SEPARATOR = ", "
+    private val LOCAL_NAME_SEPARATOR = " – "
 
     private fun buildLocalName(englishName: String, localNames: List<String>): String? {
         if (localNames.isEmpty())
             return null
         else {
-            val localPart = localNames.joinToString(LOCAL_NAME_SEPARATOR)
+            val localPart = localNames.joinToString(LOCAL_NAME_SEPARATOR) { it.capitalize() }
             return "$localPart ($englishName)"
         }
     }
@@ -52,7 +52,7 @@ object DeriveLocaleSABCsvParser {
             row.getColumn(ENGLISH_NAME).flatMap { englishName ->
 
 
-                val indianName = buildLocalName(englishName, row.collectNonBlank(INDIAN_NAME_INDICES).)
+                val indianName = buildLocalName(englishName, row.collectNonBlank(INDIAN_NAME_INDICES))
                 val sriLankanName = buildLocalName(englishName, row.collectNonBlank(SRI_LANKAN_NAME_INDICES))
                 val pakistaniName = buildLocalName(englishName, row.collectNonBlank(PAKISTANI_NAME_INDICES))
                 val bangladeshiName = buildLocalName(englishName, row.collectNonBlank(BANGLADESHI_NAME_INDICES))
