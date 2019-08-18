@@ -114,10 +114,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
 
         val destLocale = foodDatabase.runTransaction {
             getLocale(destLocaleId, it)
-        }
-
-        if (destLocale == null)
-            throw IllegalArgumentException("Locale $destLocaleId does not exist")
+        } ?: throw IllegalArgumentException("Locale $destLocaleId does not exist")
 
 
         actions.filterIsInstance<FoodAction.New>().forEach { newFood ->
@@ -130,7 +127,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
                 val attributes = InheritableAttributes(null, null, null,
                         if (newFood.recipesOnly) FoodsServiceV2.USE_AS_RECIPE_INGREDIENT else FoodsServiceV2.USE_AS_REGULAR_FOOD)
 
-                newFoods.add(NewFoodV2(code, it.englishDescription, 1, attributes))
+                newFoods.add(NewFoodV2(code, it.englishDescription, 1, attributes, newFood.categories))
                 newLocalFoods.add(NewLocalFoodV2(code, it.localDescription, nutrientTableCodes, emptyList(),
                         emptyList(), emptyList()))
                 foodCodesToInclude.add(code)
@@ -174,6 +171,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
             foodsService.copyFoods(foodCopies, it)
             foodsService.createLocalFoods(newLocalFoods, destLocaleId, it)
             foodsService.copyLocalFoods(sourceLocaleId, destLocaleId, localCopies, it)
+            foodsService.copyCategories(sourceLocaleId, destLocaleId, it)
             foodsService.addFoodsToLocale(foodCodesToInclude, destLocaleId, it)
         }
     }

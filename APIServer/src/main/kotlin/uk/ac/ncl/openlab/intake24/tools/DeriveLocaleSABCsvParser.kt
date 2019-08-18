@@ -40,7 +40,7 @@ object DeriveLocaleSABCsvParser {
     private fun collectCategories(row: SafeRowReader): List<String> {
         return List(CATEGORIES_COLUMN_COUNT) { CATEGORIES_START_INDEX + it }
                 .mapNotNull { row.getColumn(it) }
-                .filterNot { it == CATEGORIES_NULL_VALUE }
+                .filterNot { it.isBlank() || it == CATEGORIES_NULL_VALUE }
     }
 
     private fun parseRow(rowIndex: Int, row: Array<String>, newFctId: String): Either<String, FoodAction> {
@@ -81,7 +81,7 @@ object DeriveLocaleSABCsvParser {
                         val fallbackDescription = listOf(FoodDescription(englishName, englishName))
 
                         Right(FoodAction.New(if (localNames.isNotEmpty()) localNames else fallbackDescription,
-                                FoodCompositionTableReference("NDNS", "1"), false))
+                                categories, FoodCompositionTableReference("NDNS", "1"), false))
 
                     }
 

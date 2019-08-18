@@ -16,7 +16,7 @@ data class FoodDescription(val englishDescription: String, val localDescription:
 
 sealed class FoodAction {
     data class Include(val foodCode: String, val localDescription: String, val copies: List<FoodDescription>, val localFctCode: FoodCompositionTableReference?) : FoodAction()
-    data class New(val descriptions: List<FoodDescription>, val fctCode: FoodCompositionTableReference, val recipesOnly: Boolean) : FoodAction()
+    data class New(val descriptions: List<FoodDescription>, val categories: List<String>, val fctCode: FoodCompositionTableReference, val recipesOnly: Boolean) : FoodAction()
     object NoAction : FoodAction()
 }
 
@@ -66,7 +66,7 @@ object DeriveLocaleNDNSCsvParser {
                     row.getColumn(NEW_DESCRIPTION).flatMap { newDescription ->
                         row.getColumn(FCT_CODE).flatMap { newFctCode ->
                             Right(FoodAction.New(copyDescriptions + FoodDescription(newDescription, newDescription),
-                                    FoodCompositionTableReference(newFctId, newFctCode), false))
+                                    emptyList(), FoodCompositionTableReference(newFctId, newFctCode), false))
 
                         }
                     }
@@ -75,7 +75,7 @@ object DeriveLocaleNDNSCsvParser {
                     row.getColumn(NEW_DESCRIPTION).flatMap { newDescription ->
                         row.getColumn(FCT_CODE).flatMap { fctCode ->
                             Right(FoodAction.New(copyDescriptions + FoodDescription(newDescription, newDescription),
-                                    FoodCompositionTableReference(newFctId, fctCode), true))
+                                    emptyList(), FoodCompositionTableReference(newFctId, fctCode), true))
                         }
                     }
 

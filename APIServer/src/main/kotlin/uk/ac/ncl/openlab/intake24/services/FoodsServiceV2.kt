@@ -17,7 +17,8 @@ import java.util.*
 data class InheritableAttributes(val readyMealOption: Boolean?, val sameAsBeforeOption: Boolean?, val reasonableAmount: Int?,
                                  val useInRecipes: Int?)
 
-data class NewFoodV2(val code: String, val englishDescription: String, val groupCode: Int, val attributes: InheritableAttributes)
+data class NewFoodV2(val code: String, val englishDescription: String, val groupCode: Int, val attributes: InheritableAttributes,
+                     val categories: List<String>)
 
 data class NewLocalFoodV2(val code: String, val localDescription: String?, val nutrientTableCodes: List<FoodCompositionTableReference>,
                           val portionSize: List<PortionSizeMethod>, val associatedFoods: List<AssociatedFood>, val brandNames: List<String>)
@@ -48,10 +49,10 @@ data class UpdateLocalFoodV2(val code: String, val baseVersion: UUID?, val newCo
                              val associatedFoods: List<AssociatedFood>, val brandNames: List<String>)
 
 
-data class CategoryHeader(val code: String, val englishDescription: String, val localDescription: String?, val isHidden: Boolean)
+data class CategoryHeader(val code: String, val englishDescription: String, val localDescription: List<String>, val isHidden: Boolean)
 
 
-data class FoodHeader(val code: String, val englishDescription: String, val localDescription: String?)
+data class FoodHeader(val code: String, val englishDescription: String, val localDescription: List<String>)
 
 
 data class CategoryContents(val foods: List<FoodHeader>, val subcategories: List<CategoryHeader>)
@@ -419,7 +420,15 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                 query.values(food.code, food.attributes.sameAsBeforeOption, food.attributes.readyMealOption,
                         food.attributes.reasonableAmount, food.attributes.useInRecipes)
 
-            }
+            }.execute()
+
+            val categoriesInsertQuery = context.insertInto(FOODS_CATEGORIES, FOODS_CATEGORIES.FOOD_CODE, FOODS_CATEGORIES.CATEGORY_CODE)
+
+            foods.fold(categoriesInsertQuery) { query, food ->
+                food.categories.fold(query) { q2, categoryCode ->
+                    q2.values(food.code, categoryCode)
+                }
+            }.execute()
         } else {
             logger.debug("Empty list")
         }
@@ -594,6 +603,13 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
         }
     }
 
+    private fun <T> nullableAsList(value: T?): List<T> {
+        if (value == null)
+            return emptyList()
+        else
+            return listOf(value)
+    }
+
     fun getRootCategories(localeId: String): List<CategoryHeader> {
         return foodDatabase.runTransaction {
 
@@ -617,7 +633,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                     .and(CATEGORIES_LOCAL.LOCALE_ID.eq(localeId))
                     .orderBy(CATEGORIES_LOCAL.LOCAL_DESCRIPTION)
                     .fetch {
-                        CategoryHeader(it[c.CODE], it[c.DESCRIPTION], it[CATEGORIES_LOCAL.LOCAL_DESCRIPTION], it[c.IS_HIDDEN])
+                        CategoryHeader(it[c.CODE], it[c.DESCRIPTION], nullableAsList(it[CATEGORIES_LOCAL.LOCAL_DESCRIPTION]), it[c.IS_HIDDEN])
                     }
         }
     }
@@ -637,7 +653,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                     .and(FOODS_LOCAL.LOCALE_ID.eq(localeId))
                     .orderBy(FOODS_LOCAL.LOCAL_DESCRIPTION)
                     .fetch {
-                        FoodHeader(it[FOODS.CODE], it[FOODS.DESCRIPTION], it[FOODS_LOCAL.LOCAL_DESCRIPTION])
+                        FoodHeader(it[FOODS.CODE], it[FOODS.DESCRIPTION], nullableAsList(it[FOODS_LOCAL.LOCAL_DESCRIPTION]))
                     }
         }
     }
@@ -658,7 +674,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                     .where(FOODS_CATEGORIES.CATEGORY_CODE.eq(categoryCode))
                     .orderBy(coalesce(fl.LOCAL_DESCRIPTION, flp.LOCAL_DESCRIPTION))
                     .fetch {
-                        FoodHeader(it[FOODS.CODE], it[FOODS.DESCRIPTION], it.get("local_desc", String::class.java))
+                        FoodHeader(it[FOODS.CODE], it[FOODS.DESCRIPTION], nullableAsList(it.get("local_desc", String::class.java)))
                     }
 
             val categoryHeaders = context.select(CATEGORIES.CODE, CATEGORIES.DESCRIPTION, CATEGORIES_LOCAL.LOCAL_DESCRIPTION, CATEGORIES.IS_HIDDEN)
@@ -668,12 +684,33 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                     .where(CATEGORIES_CATEGORIES.CATEGORY_CODE.eq(categoryCode))
                     .orderBy(CATEGORIES_LOCAL.LOCAL_DESCRIPTION)
                     .fetch {
-                        CategoryHeader(it[CATEGORIES.CODE], it[CATEGORIES.DESCRIPTION], it[CATEGORIES_LOCAL.LOCAL_DESCRIPTION], it[CATEGORIES.IS_HIDDEN])
+                        CategoryHeader(it[CATEGORIES.CODE], it[CATEGORIES.DESCRIPTION], nullableAsList(it[CATEGORIES_LOCAL.LOCAL_DESCRIPTION]), it[CATEGORIES.IS_HIDDEN])
                     }
 
             CategoryContents(foodHeaders, categoryHeaders)
         }
     }
 
+    /*
+    Temporary solution for locale initialization that copies local category names from sourceLocale to destLocale.
+    Category structure will have to be separated per locale at some point.
+     */
+    fun copyCategories(sourceLocale: String, destLocale: String, context: DSLContext) {
+        validateLocaleId(sourceLocale, context)
+        validateLocaleId(destLocale, context)
+
+        val sourceRows = context.select(CATEGORIES_LOCAL.CATEGORY_CODE, CATEGORIES_LOCAL.LOCAL_DESCRIPTION, CATEGORIES_LOCAL.SIMPLE_LOCAL_DESCRIPTION)
+                .from(CATEGORIES_LOCAL)
+                .where(CATEGORIES_LOCAL.LOCALE_ID.eq(sourceLocale))
+                .fetchArray()
+
+        val insert = context.insertInto(CATEGORIES_LOCAL, CATEGORIES_LOCAL.LOCALE_ID, CATEGORIES_LOCAL.CATEGORY_CODE,
+                CATEGORIES_LOCAL.LOCAL_DESCRIPTION, CATEGORIES_LOCAL.SIMPLE_LOCAL_DESCRIPTION, CATEGORIES_LOCAL.VERSION)
+
+        sourceRows.fold(insert) { query, row ->
+            query.values(destLocale, row[CATEGORIES_LOCAL.CATEGORY_CODE], row[CATEGORIES_LOCAL.LOCAL_DESCRIPTION],
+                    row[CATEGORIES_LOCAL.SIMPLE_LOCAL_DESCRIPTION], UUID.randomUUID())
+        }.execute()
+    }
 
 }
