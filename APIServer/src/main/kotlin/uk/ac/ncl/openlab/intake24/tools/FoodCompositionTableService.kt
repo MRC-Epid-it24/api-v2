@@ -3,6 +3,9 @@ package uk.ac.ncl.openlab.intake24.tools
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.google.inject.name.Named
+import org.jooq.DSLContext
+import org.jooq.impl.DSL.row
+import org.jooq.impl.DSL.unquotedName
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.foodsql.Keys
@@ -89,23 +92,34 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
         };
     }
 
+    private fun updateColumnMapping(tableId: String, mapping: List<CsvColumnMapping>, context: DSLContext) {
+        context.deleteFrom(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS)
+                .where(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TABLE_ID.eq(tableId))
+                .execute();
+
+        val insert1 = context.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS,
+                Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TABLE_ID,
+                Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TYPE_ID,
+                Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET
+        )
+
+        if (mapping.isNotEmpty()) {
+            mapping.fold(insert1, { acc, columnMapping ->
+                acc.values(tableId, columnMapping.nutrientId, columnMapping.columnOffset)
+            }).execute()
+        }
+    }
+
+    fun updateColumnMapping(tableId: String, mapping: List<CsvColumnMapping>) {
+        foodDatabase.runTransaction {
+            updateColumnMapping(tableId, mapping, it)
+        }
+    }
+
     fun updateFoodCompositionTable(tableId: String, update: FoodCompositionTable) {
         foodDatabase.runTransaction {
-            it.deleteFrom(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS)
-                    .where(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TABLE_ID.eq(tableId))
-                    .execute();
 
-            val insert1 = it.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS,
-                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TABLE_ID,
-                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TYPE_ID,
-                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET
-            )
-
-            if (update.mapping.nutrientColumns.isNotEmpty()) {
-                update.mapping.nutrientColumns.fold(insert1, { acc, columnMapping ->
-                    acc.values(tableId, columnMapping.nutrientId, columnMapping.columnOffset)
-                }).execute()
-            }
+            updateColumnMapping(tableId, update.mapping.nutrientColumns, it)
 
             it.update(Tables.NUTRIENT_TABLE_CSV_MAPPING)
                     .set(Tables.NUTRIENT_TABLE_CSV_MAPPING.ROW_OFFSET, update.mapping.rowOffset)
@@ -136,8 +150,8 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
 
             it.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING,
                     Tables.NUTRIENT_TABLE_CSV_MAPPING.NUTRIENT_TABLE_ID,
-                    Tables.NUTRIENT_TABLE_CSV_MAPPING.ID_COLUMN_OFFSET,
                     Tables.NUTRIENT_TABLE_CSV_MAPPING.ROW_OFFSET,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING.ID_COLUMN_OFFSET,
                     Tables.NUTRIENT_TABLE_CSV_MAPPING.DESCRIPTION_COLUMN_OFFSET,
                     Tables.NUTRIENT_TABLE_CSV_MAPPING.LOCAL_DESCRIPTION_COLUMN_OFFSET
             ).values(table.id,
@@ -163,36 +177,60 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
 
     fun updateNutrientRecords(tableId: String, records: List<FoodCompositionTableRecord>) {
         foodDatabase.runTransaction {
-            records.forEach { record ->
-                it.insertInto(Tables.NUTRIENT_TABLE_RECORDS,
-                        Tables.NUTRIENT_TABLE_RECORDS.ID,
-                        Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID,
-                        Tables.NUTRIENT_TABLE_RECORDS.ENGLISH_DESCRIPTION,
-                        Tables.NUTRIENT_TABLE_RECORDS.LOCAL_DESCRIPTION)
-                        .values(record.recordId, tableId, record.englishDescription, record.localDescription)
-                        .onConflictOnConstraint(Keys.NUTRIENT_TABLE_RECORDS_PK)
-                        .doUpdate()
-                        .set(Tables.NUTRIENT_TABLE_RECORDS.ENGLISH_DESCRIPTION, record.englishDescription)
-                        .set(Tables.NUTRIENT_TABLE_RECORDS.LOCAL_DESCRIPTION, record.localDescription)
-                        .execute()
 
-                it.deleteFrom(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS)
-                        .where(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID.eq(tableId)
-                                .and(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID.`in`(records.map { it.recordId })))
-                        .execute()
+            val recordsInsertQuery = it.insertInto(Tables.NUTRIENT_TABLE_RECORDS,
+                    Tables.NUTRIENT_TABLE_RECORDS.ID,
+                    Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID,
+                    Tables.NUTRIENT_TABLE_RECORDS.ENGLISH_DESCRIPTION,
+                    Tables.NUTRIENT_TABLE_RECORDS.LOCAL_DESCRIPTION)
 
-                val insert1 = it.insertInto(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS,
-                        Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID,
-                        Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID,
-                        Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TYPE_ID,
-                        Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.UNITS_PER_100G)
+            val excluded = Tables.NUTRIENT_TABLE_RECORDS.`as`(unquotedName("excluded"))
 
-                record.nutrients.fold(insert1) { insert, col ->
-                    insert.values(tableId, record.recordId, col.first, col.second)
-                }.execute()
-
+            val recordsInsertQuery2 = records.fold(recordsInsertQuery) { query, record ->
+                query.values(record.recordId, tableId, record.englishDescription, record.localDescription)
             }
+
+            recordsInsertQuery2.onConflictOnConstraint(Keys.NUTRIENT_TABLE_RECORDS_PK)
+                    .doUpdate()
+                    .set(Tables.NUTRIENT_TABLE_RECORDS.ENGLISH_DESCRIPTION, excluded.ENGLISH_DESCRIPTION)
+                    .set(Tables.NUTRIENT_TABLE_RECORDS.LOCAL_DESCRIPTION, excluded.LOCAL_DESCRIPTION)
+                    .execute()
+
+            it.deleteFrom(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS)
+                    .where(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID.eq(tableId)
+                            .and(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID.`in`(records.map { it.recordId })))
+                    .execute()
+
+
+            val nutrientsInsertQuery = it.insertInto(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS,
+                    Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID,
+                    Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID,
+                    Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TYPE_ID,
+                    Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.UNITS_PER_100G)
+
+            records.fold(nutrientsInsertQuery) { q1, record ->
+                record.nutrients.fold(q1) { q2, col ->
+                    q2.values(tableId, record.recordId, col.first, col.second)
+                }
+            }.execute()
         }
+
     }
 
+    fun checkFoodCompositionCodes(codes: List<FoodCompositionTableReference>): List<FoodCompositionTableReference> {
+        val existing = foodDatabase.runTransaction { context ->
+            context.select(Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID, Tables.NUTRIENT_TABLE_RECORDS.ID)
+                    .from(Tables.NUTRIENT_TABLE_RECORDS)
+                    .where(row(Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID, Tables.NUTRIENT_TABLE_RECORDS.ID).`in`(codes.map {
+                        row(it.tableId, it.recordId)
+                    }))
+                    .fetchSet {
+                        Pair(it[Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID], it[Tables.NUTRIENT_TABLE_RECORDS.ID])
+                    }
+        }
+
+        return codes.filterNot {
+            existing.contains(Pair(it.tableId, it.recordId))
+        }
+    }
 }

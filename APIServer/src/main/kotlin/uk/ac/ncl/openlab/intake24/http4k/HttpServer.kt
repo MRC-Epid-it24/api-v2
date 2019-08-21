@@ -154,12 +154,14 @@ fun main() {
             config.getString("db.system.url"),
             config.getString("db.system.user"),
             config.getString("db.system.password"),
+            config.getBoolean("jooq.executeLogging"),
             SQLDialect.POSTGRES_9_5)
 
     val foodsDatabase = DatabaseClient(
             config.getString("db.foods.url"),
             config.getString("db.foods.user"),
             config.getString("db.foods.password"),
+            config.getBoolean("jooq.executeLogging"),
             SQLDialect.POSTGRES_9_5)
 
     val coreModule = object : AbstractModule() {

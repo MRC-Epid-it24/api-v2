@@ -1,6 +1,7 @@
 package uk.ac.ncl.openlab.intake24.tools
 
 import com.opencsv.CSVReader
+import uk.ac.ncl.openlab.intake24.tools.csvutils.excelColumnToOffset
 import uk.ac.ncl.openlab.intake24.tools.csvutils.offsetToExcelColumn
 import java.io.InputStream
 import java.io.InputStreamReader
@@ -60,5 +61,16 @@ object FoodCompositionCsvParser {
         }
 
         return CsvParseResult(parsedRows, warnings)
+    }
+
+    fun parseMappingCsv(input: InputStream): List<CsvColumnMapping> {
+        val csvRows = CSVReader(InputStreamReader(input, StandardCharsets.UTF_8)).iterator().asSequence().drop(1)
+
+        return csvRows.map {
+            val nutrientId = it[0].toInt()
+            val columnOffset = excelColumnToOffset(it[1])
+
+            CsvColumnMapping(nutrientId, columnOffset)
+        }.toList()
     }
 }

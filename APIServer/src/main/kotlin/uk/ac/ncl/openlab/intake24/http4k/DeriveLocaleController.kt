@@ -7,12 +7,10 @@ import org.http4k.core.Response
 import org.http4k.core.Status
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
-import uk.ac.ncl.openlab.intake24.tools.DeriveLocaleNDNSCsvParser
-import uk.ac.ncl.openlab.intake24.tools.DeriveLocaleParseException
-import uk.ac.ncl.openlab.intake24.tools.DeriveLocaleSABCsvParser
-import uk.ac.ncl.openlab.intake24.tools.DeriveLocaleService
+import uk.ac.ncl.openlab.intake24.tools.*
 
 class DeriveLocaleController @Inject constructor(private val service: DeriveLocaleService,
+                                                 private val fctService: FoodCompositionTableService,
                                                  private val errorUtils: ErrorUtils,
                                                  private val stringCodec: StringCodec) {
 
@@ -41,9 +39,22 @@ class DeriveLocaleController @Inject constructor(private val service: DeriveLoca
                     else -> throw DeriveLocaleParseException("Unexpected format value: $format")
                 }
 
+                val codes = actions.mapNotNull {
+                    when(it) {
+                        is FoodAction.Include -> it.localFctCode
+                        is FoodAction.New -> it.fctCode
+                        is FoodAction.NoAction -> null
+                    }
+                }
 
-                if (errors.isNotEmpty())
-                    return Response(Status.BAD_REQUEST).body(stringCodec.encode(ErrorsResponse(errors)))
+                val codeErrors = fctService.checkFoodCompositionCodes(codes).map {
+                    "Food composition record ${it.recordId} does not exist in table ${it.tableId}"
+                }.distinct().sorted()
+
+                val allErrors = errors + codeErrors
+
+                if (allErrors.isNotEmpty())
+                    return Response(Status.BAD_REQUEST).body(stringCodec.encode(ErrorsResponse(allErrors)))
                 else {
                     service.deriveLocale(sourceLocale, targetLocale, actions)
                     return Response(Status.OK)

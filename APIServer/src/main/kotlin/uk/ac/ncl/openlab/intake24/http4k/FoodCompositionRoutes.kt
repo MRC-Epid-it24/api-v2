@@ -20,10 +20,11 @@ class FoodCompositionRoutes @Inject() constructor(fctController: FoodComposition
     val router = routes(
             "/tables" bind Method.GET to security.check(::canReadTables, fctController::getCompositionTables),
             "/tables" bind Method.POST to security.check(::canWriteTables, fctController::createCompositionTable),
+            "/tables/{tableId}/mapping.csv" bind Method.GET to security.check(::canReadTables, fctController::getMappingCsv),
+            "/tables/{tableId}/mapping.csv" bind Method.PATCH to security.check(::canWriteTables, fctController::uploadMappingCsv),
             "/tables/{tableId}" bind Method.GET to security.check(::canReadTables, fctController::getCompositionTable),
             "/tables/{tableId}/csv" bind Method.PATCH to security.check(::canWriteTables, fctController::uploadCsv),
             "/tables/{tableId}" bind Method.PATCH to security.check(::canWriteTables, fctController::updateCompositionTable),
-
             "/nutrients" bind Method.GET to security.check(::canReadTables, fctController::getNutrientTypes)
     )
 }

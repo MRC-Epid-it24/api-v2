@@ -23,6 +23,18 @@ fun offsetToExcelColumn(offset_: Int): String {
     return sb.toString()
 }
 
+fun excelColumnToOffset(columnRef: String): Int {
+    var result = 0
+    var mul = 1
+
+    for (ch in columnRef.reversed()) {
+        result += (ch - 'A' + 1) * mul
+        mul *= 26
+    }
+
+    return result - 1
+}
+
 class SafeRowReader(private val row: Array<String>, private val rowIndex: Int) {
 
     fun getColumn(index: Int): String? {

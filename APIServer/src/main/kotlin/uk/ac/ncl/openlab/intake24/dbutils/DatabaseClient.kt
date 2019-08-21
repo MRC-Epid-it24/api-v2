@@ -4,16 +4,19 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
+import org.jooq.conf.Settings
 import org.jooq.exception.DataAccessException
 import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 import java.sql.SQLException
 
-class DatabaseClient(databaseUrl: String, username: String, password: String?, private val sqlDialect: SQLDialect) {
+class DatabaseClient(databaseUrl: String, username: String, password: String?, executeLogging: Boolean, private val sqlDialect: SQLDialect) {
     private val logger = LoggerFactory.getLogger(DatabaseClient::class.java)
 
     val dataSource: HikariDataSource
+
+    val jooqSettings = Settings().withExecuteLogging(executeLogging)
 
     init {
         val hikariConf = HikariConfig()
@@ -40,7 +43,7 @@ class DatabaseClient(databaseUrl: String, username: String, password: String?, p
 
             try {
                 connection.setAutoCommit(false)
-                val result = transaction(DSL.using(connection, sqlDialect))
+                val result = transaction(DSL.using(connection, sqlDialect, jooqSettings))
                 connection.commit()
                 return result
             } catch (e: Exception) {
