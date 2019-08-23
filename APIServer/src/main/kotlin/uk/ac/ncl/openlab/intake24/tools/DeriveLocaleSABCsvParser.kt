@@ -49,7 +49,7 @@ object DeriveLocaleSABCsvParser {
                 .filterNot { it.isBlank() }
     }
 
-    private fun parseRow(rowIndex: Int, row: Array<String>, newFctId: String): Either<String, FoodAction> {
+    private fun parseRow(rowIndex: Int, row: Array<String>): Either<String, FoodAction> {
 
         val sourceRowIndex = rowIndex + ROW_OFFSET
 
@@ -117,14 +117,14 @@ object DeriveLocaleSABCsvParser {
         }
     }
 
-    fun parseTable(input: InputStream, newFctId: String): Pair<List<String>, List<FoodAction>> {
+    fun parseTable(input: InputStream): Pair<List<String>, List<FoodAction>> {
         val csvRows = CSVReader(InputStreamReader(input, StandardCharsets.UTF_8)).iterator().asSequence().drop(1)
 
         val errors = mutableListOf<String>()
         val actions = mutableListOf<FoodAction>()
 
         csvRows.forEachIndexed { index, row ->
-            when (val rowResult = parseRow(index + 1, row, newFctId)) {
+            when (val rowResult = parseRow(index + 1, row)) {
                 is Either.Right -> actions.add(rowResult.b)
                 is Either.Left -> errors.add(rowResult.a)
             }

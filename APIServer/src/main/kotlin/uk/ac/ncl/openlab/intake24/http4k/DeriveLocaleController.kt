@@ -25,17 +25,16 @@ class DeriveLocaleController @Inject constructor(private val service: DeriveLoca
         val sourceLocale = form.field("sourceLocale")
         val targetLocale = form.field("targetLocale")
         val format = form.field("format")
-        val foodCompositionTable = "NDNS"
 
-        if (file == null || sourceLocale == null || targetLocale == null || foodCompositionTable == null || format == null)
+        if (file == null || sourceLocale == null || targetLocale == null || format == null)
             return errorUtils.errorResponse(Status.BAD_REQUEST, "Missing required field")
         else {
 
             try {
 
                 val (errors, actions) = when (format) {
-                    "ndns1" -> DeriveLocaleNDNSCsvParser.parseTable(file.content, foodCompositionTable)
-                    "sab1" -> DeriveLocaleSABCsvParser.parseTable(file.content, foodCompositionTable)
+                    "ndns1" -> DeriveLocaleNDNSCsvParser.parseTable(file.content)
+                    "sab1" -> DeriveLocaleSABCsvParser.parseTable(file.content)
                     else -> throw DeriveLocaleParseException("Unexpected format value: $format")
                 }
 

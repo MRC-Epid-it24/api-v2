@@ -36,11 +36,13 @@ object DeriveLocaleNDNSCsvParser {
     private const val COPY_DESCRIPTION_1_INDEX = 7
     private const val COPY_DESCRIPTION_2_INDEX = 8
 
-    private fun parseRow(rowIndex: Int, row: Array<String>, newFctId: String): Either<String, FoodAction> {
+    private fun parseRow(rowIndex: Int, row: Array<String>): Either<String, FoodAction> {
 
 
         val sourceRowIndex = rowIndex + ROW_OFFSET
         val row = SafeRowReader(row, rowIndex + ROW_OFFSET)
+
+        val fctIdPlaceholder = FoodCompositionTableReference("NDNS", "1")
 
         val copyDescriptions = row.collectNonBlank(COPY_DESCRIPTION_1_INDEX, COPY_DESCRIPTION_2_INDEX).map { FoodDescription(it, it) }
 
@@ -66,7 +68,7 @@ object DeriveLocaleNDNSCsvParser {
                     row.getColumn(NEW_DESCRIPTION).flatMap { newDescription ->
                         row.getColumn(FCT_CODE).flatMap { newFctCode ->
                             Right(FoodAction.New(copyDescriptions + FoodDescription(newDescription, newDescription),
-                                    emptyList(), FoodCompositionTableReference(newFctId, newFctCode), false))
+                                    emptyList(), fctIdPlaceholder, false))
 
                         }
                     }
@@ -75,7 +77,7 @@ object DeriveLocaleNDNSCsvParser {
                     row.getColumn(NEW_DESCRIPTION).flatMap { newDescription ->
                         row.getColumn(FCT_CODE).flatMap { fctCode ->
                             Right(FoodAction.New(copyDescriptions + FoodDescription(newDescription, newDescription),
-                                    emptyList(), FoodCompositionTableReference(newFctId, fctCode), true))
+                                    emptyList(), fctIdPlaceholder, true))
                         }
                     }
 
@@ -84,7 +86,7 @@ object DeriveLocaleNDNSCsvParser {
                     row.getColumn(FOOD_CODE).flatMap { foodCode ->
                         row.getColumn(NEW_DESCRIPTION).flatMap { newDescription ->
                             row.getColumn(FCT_CODE).flatMap { newFctCode ->
-                                Right(FoodAction.Include(foodCode, newDescription, copyDescriptions, FoodCompositionTableReference(newFctId, newFctCode)))
+                                Right(FoodAction.Include(foodCode, newDescription, copyDescriptions,fctIdPlaceholder))
                             }
                         }
                     }
@@ -98,14 +100,14 @@ object DeriveLocaleNDNSCsvParser {
         }
     }
 
-    fun parseTable(input: InputStream, newFctId: String): Pair<List<String>, List<FoodAction>> {
+    fun parseTable(input: InputStream): Pair<List<String>, List<FoodAction>> {
         val csvRows = CSVReader(InputStreamReader(input, StandardCharsets.UTF_8)).iterator().asSequence().drop(1)
 
         val errors = mutableListOf<String>()
         val actions = mutableListOf<FoodAction>()
 
         csvRows.forEachIndexed { index, row ->
-            when (val rowResult = parseRow(index + 1, row, newFctId)) {
+            when (val rowResult = parseRow(index + 1, row)) {
                 is Either.Right -> actions.add(rowResult.b)
                 is Either.Left -> errors.add(rowResult.a)
             }
