@@ -1,8 +1,8 @@
 package uk.ac.ncl.openlab.intake24.http4k
 
 import com.google.inject.Inject
-import com.opencsv.CSVReader
 import com.opencsv.CSVWriter
+import com.typesafe.config.Config
 import org.http4k.core.MultipartFormBody
 import org.http4k.core.Request
 import org.http4k.core.Response
@@ -12,16 +12,23 @@ import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.tools.*
 import uk.ac.ncl.openlab.intake24.tools.csvutils.offsetToExcelColumn
-import java.io.FileReader
-import java.io.InputStreamReader
 import java.io.StringWriter
+import java.lang.RuntimeException
+import java.util.concurrent.ScheduledThreadPoolExecutor
+
+data class FoodCompositionTableUploadResponse(val taskId: Int, val warnings: List<String>)
 
 class FoodCompositionTableController @Inject constructor(
         private val fctService: FoodCompositionTableService,
         private val stringCodec: StringCodec,
-        private val errorUtils: ErrorUtils) {
+        private val errorUtils: ErrorUtils,
+        private val config: Config,
+        private val taskStatusManager: TaskStatusManager,
+        private val executor: ScheduledThreadPoolExecutor) {
 
     private val logger = LoggerFactory.getLogger(FoodCompositionTableController::class.java)
+
+    private val updateBatchSize = config.getInt("services.foodComposition.updateBatchSize")
 
     fun getCompositionTables(user: Intake24User, request: Request): Response {
         return Response(Status.OK)
@@ -62,6 +69,34 @@ class FoodCompositionTableController @Inject constructor(
         return Response(Status.OK)
     }
 
+    private fun updateNutrientRecordsAsync(tableId: String, records: List<FoodCompositionTableRecord>, taskId: Int) {
+
+        val recordCount = records.size
+
+        logger.debug("${records.size} records to update")
+
+        executor.execute {
+            try {
+
+                taskStatusManager.setStarted(taskId)
+
+                records.chunked(updateBatchSize).forEachIndexed { batchIndex, batch ->
+                    val progress = (batchIndex * updateBatchSize) / recordCount.toFloat()
+                    taskStatusManager.updateProgress(taskId, progress)
+                    fctService.updateNutrientRecords(tableId, batch)
+
+                    logger.debug("Updated ${(batchIndex * updateBatchSize) + batch.size} out of $recordCount (${"%.1f%%".format(progress * 100.0f)})")
+                }
+
+                taskStatusManager.setSuccessful(taskId, null)
+            } catch (e: RuntimeException) {
+                logger.error("Upload failed", e)
+                taskStatusManager.setFailed(taskId, e)
+            }
+        }
+    }
+
+
     fun uploadCsv(user: Intake24User, request: Request): Response {
         val tableId = request.path("tableId")
 
@@ -80,9 +115,12 @@ class FoodCompositionTableController @Inject constructor(
                     }
 
                     val parseResult = FoodCompositionCsvParser.parseTable(file.content, tableInfo.mapping, nutrientTypeDescriptions)
-                    fctService.updateNutrientRecords(tableId, parseResult.rows)
 
-                    Response(Status.OK).body(stringCodec.encode(parseResult.warnings))
+                    val taskId = taskStatusManager.createTask(user.userId, "FoodCompositionTableUpload")
+
+                    updateNutrientRecordsAsync(tableId, parseResult.rows, taskId)
+
+                    Response(Status.OK).body(stringCodec.encode(FoodCompositionTableUploadResponse(taskId, parseResult.warnings)))
                 } catch (e: CsvParseException) {
                     errorUtils.errorResponse(Status.BAD_REQUEST, e)
                 }

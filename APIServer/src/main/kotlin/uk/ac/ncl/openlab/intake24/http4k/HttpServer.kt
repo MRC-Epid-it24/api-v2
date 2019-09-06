@@ -16,6 +16,7 @@ import io.netty.handler.codec.http.HttpServerCodec
 import org.http4k.core.*
 import org.http4k.filter.CorsPolicy
 import org.http4k.filter.ServerFilters
+import org.http4k.routing.path
 import org.http4k.server.Http4kChannelHandler
 import org.http4k.server.Http4kServer
 import org.http4k.server.ServerConfig
@@ -28,8 +29,14 @@ import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.TaskStatusManager
+import java.lang.RuntimeException
 import java.net.InetSocketAddress
 import java.time.OffsetDateTime
+import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.ThreadPoolExecutor
+
 
 data class NettyConfig(val host: String, val port: Int) : ServerConfig {
     override fun toServer(httpHandler: HttpHandler): Http4kServer = object : Http4kServer {
@@ -82,6 +89,30 @@ class TaskStatusController @Inject() constructor(private val taskStatusManager: 
             Response(Status.OK)
                     .header("Content-Type", "application/json")
                     .body(responseBody)
+        }
+    }
+
+    fun getTaskStatus(user: Intake24User, request: Request): Response {
+        val taskIdParam = request.path("id")
+
+        return if (taskIdParam == null)
+            Response(Status.BAD_REQUEST)
+        else {
+            try {
+                val taskId = taskIdParam.toInt()
+
+                val taskInfo = taskStatusManager.getTaskStatus(user.userId, taskId)
+
+                if (taskInfo == null)
+                    Response(Status.NOT_FOUND)
+                else
+                    Response(Status.OK)
+                            .header("Content-Type", "application/json")
+                            .body(stringCodec.encode(taskInfo))
+
+            } catch (e: NumberFormatException) {
+                Response(Status.BAD_REQUEST)
+            }
         }
     }
 }
@@ -165,11 +196,35 @@ fun main() {
             SQLDialect.POSTGRES_9_5)
 
     val coreModule = object : AbstractModule() {
+
+        @Provides
+        @Singleton
+        fun createThreadPool(): ScheduledThreadPoolExecutor {
+            /*
+            Java's thread pool's behaviour is a bit weird, it won't spawn new non-core threads unless the task queue is
+            full. With an unbounded queue it will never start non-core threads.
+
+             As a workaround, we set the core and max pools to the same value and allow core threads to expire.
+
+             See also:
+             https://stackoverflow.com/questions/15485840/threadpoolexecutor-with-unbounded-queue-not-creating-new-threads
+            */
+
+            val executor = ScheduledThreadPoolExecutor(config.getInt("threadPool.numberOfThreads"))
+            executor.maximumPoolSize = config.getInt("threadPool.numberOfThreads")
+            val keepAlive = config.getDuration("threadPool.keepAliveTime", TimeUnit.MILLISECONDS)
+            executor.setKeepAliveTime(keepAlive, TimeUnit.MILLISECONDS)
+            executor.allowCoreThreadTimeOut(true)
+
+            return executor
+        }
+
         override fun configure() {
             bind(Config::class.java).toInstance(config)
             bind(DatabaseClient::class.java).annotatedWith(Names.named("system")).toInstance(systemDatabase)
             bind(DatabaseClient::class.java).annotatedWith(Names.named("foods")).toInstance(foodsDatabase)
             bind(Intake24Authenticator::class.java).toInstance(Intake24Authenticator(config.getString("authentication.jwtSecret")))
+
         }
     }
 

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.google.inject.name.Named
+import org.jooq.Record
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.systemsql.Tables
 import java.time.OffsetDateTime
@@ -101,9 +102,49 @@ class TaskStatusManager @Inject() constructor(@Named("system") val systemDatabas
                     .set(Tables.TOOLS_TASKS.COMPLETED_AT, OffsetDateTime.now())
                     .set(Tables.TOOLS_TASKS.SUCCESSFUL, false)
                     .set(Tables.TOOLS_TASKS.STACK_TRACE, collectStackTrace(cause))
+                    .where(Tables.TOOLS_TASKS.ID.eq(taskId))
                     .execute()
         }
     }
+
+
+    private fun parseTaskRow(row: Record): TaskInfo {
+        val completionStatus = if (row[Tables.TOOLS_TASKS.COMPLETED_AT] != null && row[Tables.TOOLS_TASKS.SUCCESSFUL] != null) {
+            if (row[Tables.TOOLS_TASKS.SUCCESSFUL]) {
+                val downloadUrl = row[Tables.TOOLS_TASKS.DOWNLOAD_URL]
+                val downloadUrlExpiresAt = row[Tables.TOOLS_TASKS.DOWNLOAD_URL_EXPIRES_AT]
+
+                val download = if (downloadUrl != null && downloadUrlExpiresAt != null)
+                    Download(downloadUrl, downloadUrlExpiresAt)
+                else
+                    null
+
+                CompletionStatus.Finished(download)
+            } else {
+                CompletionStatus.Failed(row[Tables.TOOLS_TASKS.STACK_TRACE] ?: "")
+            }
+        } else {
+            if (row[Tables.TOOLS_TASKS.STARTED_AT] != null) {
+                CompletionStatus.InProgress(row[Tables.TOOLS_TASKS.PROGRESS])
+            } else {
+                CompletionStatus.Pending
+            }
+        }
+
+        return TaskInfo(row[Tables.TOOLS_TASKS.ID], row[Tables.TOOLS_TASKS.CREATED_AT], completionStatus)
+    }
+
+    fun getTaskStatus(ownerId: Int, taskId: Int): TaskInfo? {
+        return systemDatabase.runTransaction { context ->
+            context.select(Tables.TOOLS_TASKS.ID, Tables.TOOLS_TASKS.CREATED_AT, Tables.TOOLS_TASKS.STARTED_AT,
+                    Tables.TOOLS_TASKS.COMPLETED_AT, Tables.TOOLS_TASKS.DOWNLOAD_URL, Tables.TOOLS_TASKS.DOWNLOAD_URL_EXPIRES_AT,
+                    Tables.TOOLS_TASKS.PROGRESS, Tables.TOOLS_TASKS.SUCCESSFUL, Tables.TOOLS_TASKS.STACK_TRACE)
+                    .from(Tables.TOOLS_TASKS)
+                    .where(Tables.TOOLS_TASKS.ID.eq(taskId).and(Tables.TOOLS_TASKS.USER_ID.eq(ownerId)))
+                    .fetchOne(this::parseTaskRow)
+        }
+    }
+
 
     fun getTaskList(ownerId: Int, type: String, since: OffsetDateTime): List<TaskInfo> {
         val rows = systemDatabase.runTransaction {
@@ -118,31 +159,6 @@ class TaskStatusManager @Inject() constructor(@Named("system") val systemDatabas
                     .fetchArray()
         }
 
-        return rows.map {
-
-            val completionStatus = if (it[Tables.TOOLS_TASKS.COMPLETED_AT] != null && it[Tables.TOOLS_TASKS.SUCCESSFUL] != null) {
-                if (it[Tables.TOOLS_TASKS.SUCCESSFUL]) {
-                    val downloadUrl = it[Tables.TOOLS_TASKS.DOWNLOAD_URL]
-                    val downloadUrlExpiresAt = it[Tables.TOOLS_TASKS.DOWNLOAD_URL_EXPIRES_AT]
-
-                    val download = if (downloadUrl != null && downloadUrlExpiresAt != null)
-                        Download(downloadUrl, downloadUrlExpiresAt)
-                    else
-                        null
-
-                    CompletionStatus.Finished(download)
-                } else {
-                    CompletionStatus.Failed(it[Tables.TOOLS_TASKS.STACK_TRACE] ?: "")
-                }
-            } else {
-                if (it[Tables.TOOLS_TASKS.STARTED_AT] != null) {
-                    CompletionStatus.InProgress(it[Tables.TOOLS_TASKS.PROGRESS])
-                } else {
-                    CompletionStatus.Pending
-                }
-            }
-
-            TaskInfo(it[Tables.TOOLS_TASKS.ID], it[Tables.TOOLS_TASKS.CREATED_AT], completionStatus)
-        }
+        return rows.map(this::parseTaskRow)
     }
 }

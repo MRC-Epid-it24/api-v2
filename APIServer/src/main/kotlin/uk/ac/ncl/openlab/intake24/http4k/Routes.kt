@@ -10,6 +10,7 @@ class Routes @Inject() constructor(foodRoutes: FoodRoutes,
                                    fileDownloadController: LocalSecureURLController,
                                    security: Security) {
     val router = routes(
+            "/tasks/{id}" bind Method.GET to security.allowAnyAuthenticated(taskStatusController::getTaskStatus),
             "/tasks" bind Method.GET to security.allowAnyAuthenticated(taskStatusController::getTasksList),
             "/files/download" bind Method.GET to fileDownloadController::download,
 

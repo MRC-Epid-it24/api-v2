@@ -177,44 +177,46 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
 
     fun updateNutrientRecords(tableId: String, records: List<FoodCompositionTableRecord>) {
         foodDatabase.runTransaction {
+            updateNutrientRecords(tableId, records, it)
+        }
+    }
 
-            val recordsInsertQuery = it.insertInto(Tables.NUTRIENT_TABLE_RECORDS,
-                    Tables.NUTRIENT_TABLE_RECORDS.ID,
-                    Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID,
-                    Tables.NUTRIENT_TABLE_RECORDS.ENGLISH_DESCRIPTION,
-                    Tables.NUTRIENT_TABLE_RECORDS.LOCAL_DESCRIPTION)
+    fun updateNutrientRecords(tableId: String, records: List<FoodCompositionTableRecord>, context: DSLContext) {
+        val recordsInsertQuery = context.insertInto(Tables.NUTRIENT_TABLE_RECORDS,
+                Tables.NUTRIENT_TABLE_RECORDS.ID,
+                Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID,
+                Tables.NUTRIENT_TABLE_RECORDS.ENGLISH_DESCRIPTION,
+                Tables.NUTRIENT_TABLE_RECORDS.LOCAL_DESCRIPTION)
 
-            val excluded = Tables.NUTRIENT_TABLE_RECORDS.`as`(unquotedName("excluded"))
+        val excluded = Tables.NUTRIENT_TABLE_RECORDS.`as`(unquotedName("excluded"))
 
-            val recordsInsertQuery2 = records.fold(recordsInsertQuery) { query, record ->
-                query.values(record.recordId, tableId, record.englishDescription, record.localDescription)
-            }
-
-            recordsInsertQuery2.onConflictOnConstraint(Keys.NUTRIENT_TABLE_RECORDS_PK)
-                    .doUpdate()
-                    .set(Tables.NUTRIENT_TABLE_RECORDS.ENGLISH_DESCRIPTION, excluded.ENGLISH_DESCRIPTION)
-                    .set(Tables.NUTRIENT_TABLE_RECORDS.LOCAL_DESCRIPTION, excluded.LOCAL_DESCRIPTION)
-                    .execute()
-
-            it.deleteFrom(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS)
-                    .where(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID.eq(tableId)
-                            .and(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID.`in`(records.map { it.recordId })))
-                    .execute()
-
-
-            val nutrientsInsertQuery = it.insertInto(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS,
-                    Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID,
-                    Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID,
-                    Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TYPE_ID,
-                    Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.UNITS_PER_100G)
-
-            records.fold(nutrientsInsertQuery) { q1, record ->
-                record.nutrients.fold(q1) { q2, col ->
-                    q2.values(tableId, record.recordId, col.first, col.second)
-                }
-            }.execute()
+        val recordsInsertQuery2 = records.fold(recordsInsertQuery) { query, record ->
+            query.values(record.recordId, tableId, record.englishDescription, record.localDescription)
         }
 
+        recordsInsertQuery2.onConflictOnConstraint(Keys.NUTRIENT_TABLE_RECORDS_PK)
+                .doUpdate()
+                .set(Tables.NUTRIENT_TABLE_RECORDS.ENGLISH_DESCRIPTION, excluded.ENGLISH_DESCRIPTION)
+                .set(Tables.NUTRIENT_TABLE_RECORDS.LOCAL_DESCRIPTION, excluded.LOCAL_DESCRIPTION)
+                .execute()
+
+        context.deleteFrom(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS)
+                .where(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID.eq(tableId)
+                        .and(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID.`in`(records.map { it.recordId })))
+                .execute()
+
+
+        val nutrientsInsertQuery = context.insertInto(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS,
+                Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID,
+                Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID,
+                Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TYPE_ID,
+                Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.UNITS_PER_100G)
+
+        records.fold(nutrientsInsertQuery) { q1, record ->
+            record.nutrients.fold(q1) { q2, col ->
+                q2.values(tableId, record.recordId, col.first, col.second)
+            }
+        }.execute()
     }
 
     fun checkFoodCompositionCodes(codes: List<FoodCompositionTableReference>): List<FoodCompositionTableReference> {
