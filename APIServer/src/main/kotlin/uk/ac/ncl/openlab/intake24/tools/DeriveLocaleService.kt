@@ -128,7 +128,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
                         if (newFood.recipesOnly) FoodsServiceV2.USE_AS_RECIPE_INGREDIENT else FoodsServiceV2.USE_AS_REGULAR_FOOD)
 
                 newFoods.add(NewFoodV2(code, it.englishDescription, 1, attributes, newFood.categories))
-                newLocalFoods.add(NewLocalFoodV2(code, it.localDescription, nutrientTableCodes, emptyList(),
+                newLocalFoods.add(NewLocalFoodV2(code, it.localDescription, nutrientTableCodes, newFood.portionSizeMethods,
                         emptyList(), emptyList()))
                 foodCodesToInclude.add(code)
             }

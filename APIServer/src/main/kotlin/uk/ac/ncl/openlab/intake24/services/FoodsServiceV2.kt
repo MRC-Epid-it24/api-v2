@@ -41,7 +41,23 @@ data class AssociatedFood(val foodOrCategoryCode: FoodOrCategoryCode, val prompt
 
 
 data class PortionSizeMethod(val method: String, val description: String, val imageUrl: String, val useForRecipes: Boolean,
-                             val conversionFactor: Double, val parameters: List<PortionSizeMethodParameter>)
+                             val conversionFactor: Double, val parameters: List<PortionSizeMethodParameter>) {
+    companion object {
+
+        fun guideImage(guideImageId: String, description: String = "use_an_image", userForRecipes: Boolean = true, conversionFactor: Double = 1.0): PortionSizeMethod {
+            return PortionSizeMethod("guide-image", description, "standard-portion.jpg", userForRecipes, conversionFactor,
+                    listOf(PortionSizeMethodParameter("guide-image-id", guideImageId)))
+        }
+
+        fun asServed(servingSetId: String, leftoversSetId: String? = null, description: String = "use_an_image", userForRecipes: Boolean = true, conversionFactor: Double = 1.0): PortionSizeMethod {
+
+            val params =
+                    listOfNotNull(PortionSizeMethodParameter("serving-image-set", servingSetId), leftoversSetId?.let { PortionSizeMethodParameter("leftovers-image-set", it) })
+
+            return PortionSizeMethod("as-served", description, "standard-portion.jpg", userForRecipes, conversionFactor, params)
+        }
+    }
+}
 
 
 data class UpdateLocalFoodV2(val code: String, val baseVersion: UUID?, val newCode: String, val localDescription: String?,
