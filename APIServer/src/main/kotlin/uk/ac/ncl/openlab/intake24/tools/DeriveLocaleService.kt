@@ -29,18 +29,21 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
     }
 
     private fun deduplicateCode(code: String): String {
-        val last = code.last()
+        val last = code.takeLast(2)
 
-        if (last.isDigit()) {
-            val v = last.toString().toInt()
-            if (v < 9) {
-                return code.dropLast(1) + (v + 1).toString()
+        val numericalSuffix = last.toIntOrNull()
+
+        if (numericalSuffix != null) {
+            if (numericalSuffix < 99) {
+                return code.dropLast(2) + "%02d".format(numericalSuffix + 1)
             } else
                 throw IllegalArgumentException("Ran out of code variants :(")
-        } else if (code.length < 8) {
-            return code + "0"
+        } else if (code.length == 8) {
+            return code.dropLast(2) + "00"
+        } else if (code.length == 7){
+            return code.dropLast(1) + "00"
         } else {
-            return code.dropLast(1) + "0"
+            return code + "00"
         }
     }
 
@@ -54,9 +57,9 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
 
         // FIXME: No guarantee that the deduplicated codes are unique
 
-        fun checkAndRetry(substitutions: List<Pair<String, String>>, attemptsLeft: Int = 10): List<Pair<String, String>> {
+        fun checkAndRetry(substitutions: List<Pair<String, String>>, attemptsLeft: Int = 100): List<Pair<String, String>> {
             if (attemptsLeft == 0)
-                throw IllegalArgumentException("Failed to get rid of duplicates in 10 attempts")
+                throw IllegalArgumentException("Failed to get rid of duplicates in 100 attempts")
             else {
                 val duplicateCodes = foodsService.getDuplicateCodes(substitutions.map { it.second }.toSet())
 
@@ -81,9 +84,9 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
 
     private fun makeUniqueCodeAndRemember(englishDescription: String, existing: MutableSet<String>): String {
 
-        fun findUnique(attemptsLeft: Int = 10, candidate: String = makeCode(englishDescription)): String {
+        fun findUnique(attemptsLeft: Int = 100, candidate: String = makeCode(englishDescription)): String {
             return if (attemptsLeft == 0)
-                throw RuntimeException("Failed to produce unique code for $englishDescription in 10 attempts (last attempted code: $candidate)")
+                throw RuntimeException("Failed to produce unique code for $englishDescription in 100 attempts (last attempted code: $candidate)")
             else {
                 if (existing.contains(candidate)) {
                     logger.debug("Tried $candidate, already taken")
