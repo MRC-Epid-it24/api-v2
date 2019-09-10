@@ -17,7 +17,7 @@ data class FoodDescription(val englishDescription: String, val localDescription:
 
 sealed class FoodAction {
     data class Include(val foodCode: String, val localDescription: String, val copies: List<FoodDescription>, val localFctCode: FoodCompositionTableReference?) : FoodAction()
-    data class New(val descriptions: List<FoodDescription>, val categories: List<String>, val fctCode: FoodCompositionTableReference, val recipesOnly: Boolean, val portionSizeMethods: List<PortionSizeMethod>) : FoodAction()
+    data class New(val sourceRow: Int, val descriptions: List<FoodDescription>, val categories: List<String>, val fctCode: FoodCompositionTableReference, val recipesOnly: Boolean, val portionSizeMethods: List<PortionSizeMethod>) : FoodAction()
     object NoAction : FoodAction()
 }
 
@@ -42,6 +42,9 @@ object DeriveLocaleNDNSCsvParser {
     private val AS_SERVED_INDICES = 9..12
     private val GUIDE_INDICES = 13..14
     private val CATEGORY_INDICES = 15..24
+    private val DRINK_SCALE_INDICES = 25..26
+    private val PIZZA_INDEX = 27
+    private val CEREAL_TYPE_INDEX = 28
 
     private val TREAT_AS_BLANK = setOf("0", "#N/A")
 
@@ -60,8 +63,17 @@ object DeriveLocaleNDNSCsvParser {
         val asServedIds = collectNonBlank(row, AS_SERVED_INDICES)
         val guideIds = collectNonBlank(row, GUIDE_INDICES)
         val categories = collectNonBlank(row, CATEGORY_INDICES).distinct()
+        val drinkScaleIds = collectNonBlank(row, DRINK_SCALE_INDICES)
+        val pizza = row.getColumn(PIZZA_INDEX).orEmpty().isNotBlank()
+        val cerealType = row.getColumn(CEREAL_TYPE_INDEX).orEmpty().toLowerCase().replace("rice-krispie", "rkris")
 
-        val portionSizeMethods = emptyList<PortionSizeMethod>(); // guideIds.map(PortionSizeMethod::guideImage) + asServedIds.map(PortionSizeMethod::asServed)
+
+        val cerealMethods = if (cerealType.isBlank()) emptyList() else listOf(PortionSizeMethod.cereal(cerealType))
+        val pizzaMethods = if (pizza) listOf(PortionSizeMethod.pizza()) else emptyList()
+
+        val portionSizeMethods =
+                guideIds.map { PortionSizeMethod.guideImage(it) } + asServedIds.map { PortionSizeMethod.asServed(it) } +
+                        drinkScaleIds.map { PortionSizeMethod.drinkScale(it) } + cerealMethods + pizzaMethods
 
         return row.getColumn(ACTION).flatMap { action ->
             when (action.toLowerCase()) {
@@ -93,7 +105,7 @@ object DeriveLocaleNDNSCsvParser {
                     row.getColumn(NEW_DESCRIPTION).flatMap { newDescription ->
                         row.getColumn(FCT_ID).flatMap { fctId ->
                             row.getOneOf(CURRENT_FCT_CODE, NEW_FCT_CODE).flatMap { newFctCode ->
-                                Right(FoodAction.New(copyDescriptions + FoodDescription(newDescription, newDescription),
+                                Right(FoodAction.New(sourceRowIndex, copyDescriptions + FoodDescription(newDescription, newDescription),
                                         categories, FoodCompositionTableReference(fctId, newFctCode), false, portionSizeMethods))
 
                             }
@@ -104,7 +116,7 @@ object DeriveLocaleNDNSCsvParser {
                     row.getColumn(NEW_DESCRIPTION).flatMap { newDescription ->
                         row.getColumn(FCT_ID).flatMap { fctId ->
                             row.getOneOf(CURRENT_FCT_CODE, NEW_FCT_CODE).flatMap { newFctCode ->
-                                Right(FoodAction.New(copyDescriptions + FoodDescription(newDescription, newDescription),
+                                Right(FoodAction.New(sourceRowIndex,copyDescriptions + FoodDescription(newDescription, newDescription),
                                         categories, FoodCompositionTableReference(fctId, newFctCode), true, portionSizeMethods))
                             }
                         }

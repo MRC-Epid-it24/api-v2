@@ -11,10 +11,13 @@ import java.lang.RuntimeException
 import java.time.Year
 import java.util.regex.Pattern
 
+data class DeriveLocaleException(val errors: List<String>) : RuntimeException()
+
 @Singleton
 class DeriveLocaleService @Inject() constructor(@Named("foods") private val foodDatabase: DatabaseClient,
                                                 private val localesService: LocalesService,
-                                                private val foodsService: FoodsServiceV2) {
+                                                private val foodsService: FoodsServiceV2,
+                                                private val psmService: PortionSizeMethodsService) {
 
     private val logger = LoggerFactory.getLogger(DeriveLocaleService::class.java)
 
@@ -120,6 +123,34 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
         return code
     }
 
+    private fun validatePortionSizeMethods(methods: List<PortionSizeMethod>, asServedIds: Set<String>, guideIds: Set<String>,
+                                           drinkwareIds: Set<String>): List<String> {
+        val cerealTypes = setOf("flake", "hoop", "rkris")
+
+        return methods.mapNotNull { method ->
+            when (method.method) {
+                "as-served" -> {
+                    val id = method.parameters.find { it.name == "serving-image-set" }?.value
+                    if (!asServedIds.contains(id)) "As served set \"$id\" does not exist" else null
+                }
+                "guide-image" -> {
+                    val id = method.parameters.find { it.name == "guide-image-id" }?.value
+                    if (!guideIds.contains(id)) "Guide image \"$id\" does not exist" else null
+                }
+                "drink-scale" -> {
+                    val id = method.parameters.find { it.name == "drinkware-id" }?.value
+                    if (!drinkwareIds.contains(id)) "Drink scale \"$id\" does not exist" else null
+                }
+                "cereal" -> {
+                    val type = method.parameters.find { it.name == "type" }?.value
+
+                    if (cerealTypes.contains(type)) null else "Cereal type \"$type\" does not exist"
+                }
+                else -> null
+            }
+        }
+    }
+
 
     fun deriveLocale(sourceLocaleId: String, destLocaleId: String, actions: List<FoodAction>) {
 
@@ -129,16 +160,25 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
         val localCopies = mutableListOf<CopyLocalV2>()
         val foodCodesToInclude = mutableListOf<String>()
 
+        val psmIssues = mutableListOf<String>()
+
         val newCodes = mutableSetOf<String>()
 
         val destLocale = foodDatabase.runTransaction {
             getLocale(destLocaleId, it)
         } ?: throw IllegalArgumentException("Locale $destLocaleId does not exist")
 
+        val asServedIds = psmService.getAsServedSetIds()
+        val guideIds = psmService.getGuideImageIds()
+        val drinkwareIds = psmService.getDrinkwareIds()
 
         actions.filterIsInstance<FoodAction.New>().forEach { newFood ->
-            newFood.descriptions.map {
 
+            psmIssues.addAll(validatePortionSizeMethods(newFood.portionSizeMethods, asServedIds, guideIds, drinkwareIds).map {
+                "In row ${newFood.sourceRow}, \"${newFood.descriptions.first().englishDescription}\": " + it
+            })
+
+            newFood.descriptions.forEach {
                 val code = makeUniqueCodeAndRemember(it.englishDescription, newCodes)
 
                 val nutrientTableCodes = if (newFood.fctCode != null) listOf(newFood.fctCode) else emptyList()
@@ -152,6 +192,9 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
                 foodCodesToInclude.add(code)
             }
         }
+
+        if (psmIssues.isNotEmpty())
+            throw DeriveLocaleException(psmIssues)
 
         actions.filterIsInstance<FoodAction.Include>().forEach { includeFood ->
 

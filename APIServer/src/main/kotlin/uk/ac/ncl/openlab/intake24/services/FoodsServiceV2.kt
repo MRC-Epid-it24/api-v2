@@ -56,6 +56,28 @@ data class PortionSizeMethod(val method: String, val description: String, val im
 
             return PortionSizeMethod("as-served", description, "standard-portion.jpg", userForRecipes, conversionFactor, params)
         }
+
+        fun drinkScale(drinkScaleId: String, description: String = "use_an_image", initialFillLevel: Double = 0.9, skipFillLevel: Boolean = false, useForRecipes: Boolean = true, conversionFactor: Double = 1.0): PortionSizeMethod {
+
+            val params = listOf(PortionSizeMethodParameter("drinkware-id", drinkScaleId),
+                    PortionSizeMethodParameter("initial-fill-level", initialFillLevel.toString()),
+                    PortionSizeMethodParameter("skip-fill-level", skipFillLevel.toString()))
+
+            return PortionSizeMethod("drink-scale", description, "standard-portion.jpg", useForRecipes,  conversionFactor, params)
+        }
+
+        fun cereal(cerealType: String, description: String = "use_an_image", useForRecipes: Boolean = true, conversionFactor: Double = 1.0): PortionSizeMethod {
+
+            val params = listOf(PortionSizeMethodParameter("type", cerealType))
+
+            return PortionSizeMethod("cereal", description, "standard-portion.jpg", useForRecipes,  conversionFactor, params)
+
+        }
+
+        fun pizza(description: String = "use_an_image", useForRecipes: Boolean = true, conversionFactor: Double = 1.0): PortionSizeMethod {
+            return PortionSizeMethod("pizza",description, "standard-portion.jpg", useForRecipes,  conversionFactor, emptyList())
+        }
+
     }
 }
 

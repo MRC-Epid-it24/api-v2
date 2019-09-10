@@ -39,7 +39,7 @@ class DeriveLocaleController @Inject constructor(private val service: DeriveLoca
                 }
 
                 val codes = actions.mapNotNull {
-                    when(it) {
+                    when (it) {
                         is FoodAction.Include -> it.localFctCode
                         is FoodAction.New -> it.fctCode
                         is FoodAction.NoAction -> null
@@ -55,8 +55,12 @@ class DeriveLocaleController @Inject constructor(private val service: DeriveLoca
                 if (allErrors.isNotEmpty())
                     return Response(Status.BAD_REQUEST).body(stringCodec.encode(ErrorsResponse(allErrors)))
                 else {
-                    service.deriveLocale(sourceLocale, targetLocale, actions)
-                    return Response(Status.OK)
+                    try {
+                        service.deriveLocale(sourceLocale, targetLocale, actions)
+                        return Response(Status.OK)
+                    } catch (e: DeriveLocaleException) {
+                        return Response(Status.BAD_REQUEST).body(stringCodec.encode(ErrorsResponse(e.errors)))
+                    }
                 }
             } catch (e: DeriveLocaleParseException) {
                 return errorUtils.errorResponse(Status.BAD_REQUEST, e)

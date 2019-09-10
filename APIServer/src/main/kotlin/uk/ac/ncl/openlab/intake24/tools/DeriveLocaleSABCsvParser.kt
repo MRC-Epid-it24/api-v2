@@ -100,7 +100,7 @@ object DeriveLocaleSABCsvParser {
                                 // otherwise
                                 val fallbackDescription = listOf(FoodDescription(englishName, englishName))
 
-                                Right(FoodAction.New(if (localNames.isNotEmpty()) localNames else fallbackDescription,
+                                Right(FoodAction.New(sourceRowIndex, if (localNames.isNotEmpty()) localNames else fallbackDescription,
                                         categories, fctReference, false, emptyList()))
                             }
                         }
