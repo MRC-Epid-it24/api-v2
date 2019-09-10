@@ -130,23 +130,42 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
         return methods.mapNotNull { method ->
             when (method.method) {
                 "as-served" -> {
-                    val id = method.parameters.find { it.name == "serving-image-set" }?.value
+                    val id = method.parameters.find { it.name == "serving-image-set" }!!.value
                     if (!asServedIds.contains(id)) "As served set \"$id\" does not exist" else null
                 }
                 "guide-image" -> {
-                    val id = method.parameters.find { it.name == "guide-image-id" }?.value
+                    val id = method.parameters.find { it.name == "guide-image-id" }!!.value
                     if (!guideIds.contains(id)) "Guide image \"$id\" does not exist" else null
                 }
                 "drink-scale" -> {
-                    val id = method.parameters.find { it.name == "drinkware-id" }?.value
+                    val id = method.parameters.find { it.name == "drinkware-id" }!!.value
                     if (!drinkwareIds.contains(id)) "Drink scale \"$id\" does not exist" else null
                 }
                 "cereal" -> {
-                    val type = method.parameters.find { it.name == "type" }?.value
+                    val type = method.parameters.find { it.name == "type" }!!.value
 
                     if (cerealTypes.contains(type)) null else "Cereal type \"$type\" does not exist"
                 }
                 else -> null
+            }
+        }
+    }
+
+    private fun addAsServedLeftovers(methods: List<PortionSizeMethod>, asServedIds: Set<String>): List<PortionSizeMethod> {
+        return methods.map { method ->
+            when (method.method) {
+                "as-served" -> {
+                    val id = method.parameters.find { it.name == "serving-image-set" }!!.value
+                    val leftoversId = method.parameters.find { it.name == "leftovers-image-set" }?.let { it.value }
+
+                    val leftoversCandidate = id + "_leftovers"
+
+                    if (leftoversId != null || !asServedIds.contains(leftoversCandidate))
+                        method
+                    else
+                        method.copy(parameters = method.parameters + PortionSizeMethodParameter("leftovers-image-set", leftoversCandidate))
+                }
+                else -> method
             }
         }
     }
@@ -174,7 +193,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
 
         actions.filterIsInstance<FoodAction.New>().forEach { newFood ->
 
-            psmIssues.addAll(validatePortionSizeMethods(newFood.portionSizeMethods, asServedIds, guideIds, drinkwareIds).map {
+           psmIssues.addAll(validatePortionSizeMethods(newFood.portionSizeMethods, asServedIds, guideIds, drinkwareIds).map {
                 "In row ${newFood.sourceRow}, \"${newFood.descriptions.first().englishDescription}\": " + it
             })
 
@@ -187,7 +206,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
                         if (newFood.recipesOnly) FoodsServiceV2.USE_AS_RECIPE_INGREDIENT else FoodsServiceV2.USE_AS_REGULAR_FOOD)
 
                 newFoods.add(NewFoodV2(code, it.englishDescription, 1, attributes, newFood.categories))
-                newLocalFoods.add(NewLocalFoodV2(code, it.localDescription, nutrientTableCodes, newFood.portionSizeMethods,
+                newLocalFoods.add(NewLocalFoodV2(code, it.localDescription, nutrientTableCodes, addAsServedLeftovers(newFood.portionSizeMethods, asServedIds),
                         emptyList(), emptyList()))
                 foodCodesToInclude.add(code)
             }
