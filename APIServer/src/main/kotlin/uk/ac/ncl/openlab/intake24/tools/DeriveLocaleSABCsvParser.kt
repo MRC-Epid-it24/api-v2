@@ -24,10 +24,8 @@ object DeriveLocaleSABCsvParser {
     private val FOOD_COMPOSITION_TABLE = Pair(10, "Food composition table ID")
     private val FOOD_COMPOSITION_CODE_EXISTING = Pair(11, "Existing food composition code")
     private val FOOD_COMPOSITION_CODE_NEW = Pair(12, "New food composition code")
-    private val STANDARD_UNIT_DESCRIPTION = Pair(13, "Standard unit description")
-    private val STANDARD_UNIT_WEIGHT = Pair(14, "Standard unit weight")
 
-    private val CATEGORIES_START_INDEX = 15
+    private val CATEGORIES_START_INDEX = 13
     private val CATEGORIES_COLUMN_COUNT = 10
 
     private val TREAT_AS_BLANK = setOf("0", "#N/A")
