@@ -30,7 +30,7 @@ object DeriveLocaleSABCsvParser {
 
     private val TREAT_AS_BLANK = setOf("0", "#N/A")
 
-    private val LOCAL_NAME_SEPARATOR = "/"
+    private val LOCAL_NAME_SEPARATOR = " / "
 
     private fun buildLocalName(englishName: String, localNames: List<String>): String? {
         if (localNames.isEmpty())
