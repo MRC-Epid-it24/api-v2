@@ -81,7 +81,7 @@ object DeriveLocaleNDNSCsvParser {
                     row.getColumn(FOOD_CODE).flatMap { foodCode ->
                         row.getColumn(FCT_ID).flatMap { fctId ->
                             row.getColumn(CURRENT_FCT_CODE).flatMap { fctCode ->
-                                row.getOneOf(OLD_DESCRIPTION, NEW_DESCRIPTION).flatMap { description ->
+                                row.getOneOf(NEW_DESCRIPTION, OLD_DESCRIPTION).flatMap { description ->
                                     Right(FoodAction.Include(foodCode, description, copyDescriptions, FoodCompositionTableReference(fctId, fctCode)))
                                 }
                             }
@@ -93,7 +93,7 @@ object DeriveLocaleNDNSCsvParser {
                     row.getColumn(FOOD_CODE).flatMap { foodCode ->
                         row.getColumn(FCT_ID).flatMap { fctId ->
                             row.getColumn(CURRENT_FCT_CODE).flatMap { fctCode ->
-                                row.getOneOf(OLD_DESCRIPTION, NEW_DESCRIPTION).flatMap { description ->
+                                row.getOneOf(NEW_DESCRIPTION, OLD_DESCRIPTION).flatMap { description ->
                                     Right(FoodAction.Include(foodCode, description, copyDescriptions, FoodCompositionTableReference(fctId, fctCode)))
                                 }
                             }
@@ -104,7 +104,7 @@ object DeriveLocaleNDNSCsvParser {
                 "new", "new-ndb", "new+subfood" ->
                     row.getColumn(NEW_DESCRIPTION).flatMap { newDescription ->
                         row.getColumn(FCT_ID).flatMap { fctId ->
-                            row.getOneOf(CURRENT_FCT_CODE, NEW_FCT_CODE).flatMap { newFctCode ->
+                            row.getOneOf(NEW_FCT_CODE, CURRENT_FCT_CODE).flatMap { newFctCode ->
                                 Right(FoodAction.New(sourceRowIndex, copyDescriptions + FoodDescription(newDescription, newDescription),
                                         categories, FoodCompositionTableReference(fctId, newFctCode), false, portionSizeMethods))
 
@@ -115,7 +115,7 @@ object DeriveLocaleNDNSCsvParser {
                 "new-ingredient", "new-ingredient+subfood" ->
                     row.getColumn(NEW_DESCRIPTION).flatMap { newDescription ->
                         row.getColumn(FCT_ID).flatMap { fctId ->
-                            row.getOneOf(CURRENT_FCT_CODE, NEW_FCT_CODE).flatMap { newFctCode ->
+                            row.getOneOf(NEW_FCT_CODE, CURRENT_FCT_CODE).flatMap { newFctCode ->
                                 Right(FoodAction.New(sourceRowIndex,copyDescriptions + FoodDescription(newDescription, newDescription),
                                         categories, FoodCompositionTableReference(fctId, newFctCode), true, portionSizeMethods))
                             }
