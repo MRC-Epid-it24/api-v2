@@ -25,7 +25,7 @@ data class NewLocalFoodV2(val code: String, val localDescription: String?, val n
 
 data class CopyFoodV2(val sourceCode: String, val newCode: String, val newDescription: String)
 
-data class CopyLocalV2(val sourceCode: String, val destCode: String, val localDescription: String)
+data class CopyLocalV2(val sourceCode: String, val destCode: String, val localDescription: String, val nutrientTableCodes: List<FoodCompositionTableReference>)
 
 
 data class PortionSizeMethodParameter(val name: String, val value: String)
@@ -63,19 +63,19 @@ data class PortionSizeMethod(val method: String, val description: String, val im
                     PortionSizeMethodParameter("initial-fill-level", initialFillLevel.toString()),
                     PortionSizeMethodParameter("skip-fill-level", skipFillLevel.toString()))
 
-            return PortionSizeMethod("drink-scale", description, "standard-portion.jpg", useForRecipes,  conversionFactor, params)
+            return PortionSizeMethod("drink-scale", description, "standard-portion.jpg", useForRecipes, conversionFactor, params)
         }
 
         fun cereal(cerealType: String, description: String = "use_an_image", useForRecipes: Boolean = true, conversionFactor: Double = 1.0): PortionSizeMethod {
 
             val params = listOf(PortionSizeMethodParameter("type", cerealType))
 
-            return PortionSizeMethod("cereal", description, "standard-portion.jpg", useForRecipes,  conversionFactor, params)
+            return PortionSizeMethod("cereal", description, "standard-portion.jpg", useForRecipes, conversionFactor, params)
 
         }
 
         fun pizza(description: String = "use_an_image", useForRecipes: Boolean = true, conversionFactor: Double = 1.0): PortionSizeMethod {
-            return PortionSizeMethod("pizza",description, "standard-portion.jpg", useForRecipes,  conversionFactor, emptyList())
+            return PortionSizeMethod("pizza", description, "standard-portion.jpg", useForRecipes, conversionFactor, emptyList())
         }
 
     }
@@ -598,8 +598,14 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
             val sourceNutrientMapping = getNutrientTableCodes(sourceFoodCodes, sourceLocale, context)
 
             val newLocalFoods = foods.map {
+
+                val nutrientTableCodes = if (it.nutrientTableCodes.isEmpty())
+                    sourceNutrientMapping[it.sourceCode] ?: error("Expected element not in map")
+                else
+                    it.nutrientTableCodes
+
                 NewLocalFoodV2(it.destCode, it.localDescription,
-                        sourceNutrientMapping[it.sourceCode] ?: error("Expected element not in map"),
+                        nutrientTableCodes,
                         sourcePortionSizeMethods[it.sourceCode] ?: error("Expected element not in map"),
                         sourceAssociatedFoods[it.sourceCode] ?: error("Expected element not in map"),
                         sourceBrands[it.sourceCode] ?: error("Expected element not in map")

@@ -223,7 +223,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
                 newLocalFoods.add(NewLocalFoodV2(includeFood.foodCode, includeFood.localDescription,
                         nutrientTableCodes, emptyList(), emptyList(), emptyList()))
             } else {
-                localCopies.add(CopyLocalV2(includeFood.foodCode, includeFood.foodCode, includeFood.localDescription))
+                localCopies.add(CopyLocalV2(includeFood.foodCode, includeFood.foodCode, includeFood.localDescription, nutrientTableCodes))
             }
 
             foodCodesToInclude.add(includeFood.foodCode)
@@ -232,7 +232,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
                 val copyCode = makeUniqueCodeAndRemember(it.englishDescription, newCodes)
 
                 foodCopies.add(CopyFoodV2(includeFood.foodCode, copyCode, it.englishDescription))
-                localCopies.add(CopyLocalV2(includeFood.foodCode, copyCode, it.localDescription))
+                localCopies.add(CopyLocalV2(includeFood.foodCode, copyCode, it.localDescription, nutrientTableCodes))
                 foodCodesToInclude.add(copyCode)
             }
         }

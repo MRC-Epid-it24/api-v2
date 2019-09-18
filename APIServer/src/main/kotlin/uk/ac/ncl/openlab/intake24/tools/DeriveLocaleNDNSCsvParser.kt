@@ -80,7 +80,7 @@ object DeriveLocaleNDNSCsvParser {
                 "retain", "retain+subfood" ->
                     row.getColumn(FOOD_CODE).flatMap { foodCode ->
                         row.getColumn(FCT_ID).flatMap { fctId ->
-                            row.getColumn(CURRENT_FCT_CODE).flatMap { fctCode ->
+                            row.getOneOf(NEW_FCT_CODE, CURRENT_FCT_CODE).flatMap { fctCode ->
                                 row.getOneOf(NEW_DESCRIPTION, OLD_DESCRIPTION).flatMap { description ->
                                     Right(FoodAction.Include(foodCode, description, copyDescriptions, FoodCompositionTableReference(fctId, fctCode)))
                                 }
@@ -92,7 +92,7 @@ object DeriveLocaleNDNSCsvParser {
                 "ingredient" ->
                     row.getColumn(FOOD_CODE).flatMap { foodCode ->
                         row.getColumn(FCT_ID).flatMap { fctId ->
-                            row.getColumn(CURRENT_FCT_CODE).flatMap { fctCode ->
+                            row.getOneOf(NEW_FCT_CODE, CURRENT_FCT_CODE).flatMap { fctCode ->
                                 row.getOneOf(NEW_DESCRIPTION, OLD_DESCRIPTION).flatMap { description ->
                                     Right(FoodAction.Include(foodCode, description, copyDescriptions, FoodCompositionTableReference(fctId, fctCode)))
                                 }
