@@ -9,7 +9,7 @@ fun main() {
     val flyway = Flyway.configure().dataSource(
             config.getString("db.system.url"),
             config.getString("db.system.user"),
-            config.getString("db.system.password"))
+            if (config.hasPath("db.system.user")) config.getString("db.system.user") else null)
             .table("flyway_migrations")
             .baselineVersion("87")
             .baselineOnMigrate(true)
