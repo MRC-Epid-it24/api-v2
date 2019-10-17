@@ -235,4 +235,26 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
             existing.contains(Pair(it.tableId, it.recordId))
         }
     }
+
+    private data class NutrientsRow(val ref: FoodCompositionTableReference, val nutrientType: Int, val unitsPer100g: Double)
+
+    fun getNutrients(references: Set<FoodCompositionTableReference>): Map<FoodCompositionTableReference, List<Pair<Int, Double>>> {
+        return foodDatabase.runTransaction { context ->
+            getNutrients(references, context)
+        }
+    }
+
+    fun getNutrients(references: Set<FoodCompositionTableReference>, context: DSLContext): Map<FoodCompositionTableReference, List<Pair<Int, Double>>> {
+        return context.select(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID, Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID,
+                Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TYPE_ID, Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.UNITS_PER_100G)
+                .from(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS)
+                .where(row(Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID, Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID).`in`(references.map { r ->
+                    row(r.tableId, r.recordId)
+                }))
+                .fetch {
+                    NutrientsRow(FoodCompositionTableReference(it[Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_ID], it[Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TABLE_RECORD_ID]),
+                            it[Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TYPE_ID], it[Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.UNITS_PER_100G])
+                }
+                .groupBy({ it.ref }, { Pair(it.nutrientType, it.unitsPer100g) })
+    }
 }

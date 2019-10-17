@@ -133,4 +133,8 @@ class Security @Inject() constructor(private val authenticate: Intake24Authentic
 
     fun allowFoodAdmins(requestHandler: AuthenticatedHttpHandler): HttpHandler =
             allowAnyOf(listOf(Intake24Roles.foodsAdmin), requestHandler)
+
+    fun allowSurveyAdmins(requestHandler: AuthenticatedHttpHandler): HttpHandler =
+            allowAnyOf(listOf(Intake24Roles.surveyAdmin), requestHandler)
+
 }
