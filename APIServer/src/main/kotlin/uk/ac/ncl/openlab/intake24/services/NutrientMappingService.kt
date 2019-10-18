@@ -109,7 +109,7 @@ class NutrientMappingService @Inject() constructor(@Named("system") val systemDa
         threadPool.execute {
             try {
                 taskStatusManager.setStarted(id)
-                recalculateNutrientsImpl(surveyId, id)
+                recalculateNutrientsImpl(surveyId, 0)
                 taskStatusManager.setSuccessful(id, null)
             } catch (e: Exception) {
                 logger.error("Recalculate task failed", e)
