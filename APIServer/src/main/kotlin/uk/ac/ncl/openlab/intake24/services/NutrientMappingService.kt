@@ -25,7 +25,7 @@ class NutrientMappingService @Inject() constructor(@Named("system") val systemDa
         const val TASK_TYPE = "recalculate-nutrients"
     }
 
-    private val logger = LoggerFactory.getLogger(NutrientMappingService.javaClass)
+    private val logger = LoggerFactory.getLogger(NutrientMappingService::class.java)
 
     private val foodBatchSize: Int = config.getInt("services.nutrientMapping.recalculateBatchSize")
 
@@ -75,6 +75,8 @@ class NutrientMappingService @Inject() constructor(@Named("system") val systemDa
     private fun recalculateBatch(foods: List<RemappingFood>) {
         val batchNutrients = fctService.getNutrients(foods.map { it.fctReference }.toSet())
 
+        logger.debug("Fetched nutrient data for the next batch, ${batchNutrients.size} entries")
+
         val recalculated = foods.flatMap { food ->
             batchNutrients[food.fctReference]!!.map {
                 SubmissionNutrientsRow(food.id, it.first, it.second / 100.0 * food.portionWeight)
@@ -83,8 +85,12 @@ class NutrientMappingService @Inject() constructor(@Named("system") val systemDa
 
         systemDatabase.runTransaction {
 
+            logger.debug("Deleting current nutrient data")
+
             it.deleteFrom(SURVEY_SUBMISSION_NUTRIENTS)
                     .where(SURVEY_SUBMISSION_NUTRIENTS.FOOD_ID.`in`(foods.map { it.id })).execute()
+
+            logger.debug("Inserting new nutrient data, ${recalculated.size} new rows")
 
             val insert = it.insertInto(SURVEY_SUBMISSION_NUTRIENTS, SURVEY_SUBMISSION_NUTRIENTS.FOOD_ID, SURVEY_SUBMISSION_NUTRIENTS.NUTRIENT_TYPE_ID, SURVEY_SUBMISSION_NUTRIENTS.AMOUNT)
 
@@ -97,10 +103,13 @@ class NutrientMappingService @Inject() constructor(@Named("system") val systemDa
     private fun recalculateNutrientsImpl(surveyId: String, currentOffset: Int) {
         val nextBatch = getNextBatch(surveyId, currentOffset)
 
+        logger.debug("Fetched next food batch at offset $currentOffset with limit $foodBatchSize, actual batch size ${nextBatch.size}")
+
         if (nextBatch.isNotEmpty()) {
             recalculateBatch(nextBatch)
             recalculateNutrientsImpl(surveyId, currentOffset + nextBatch.size)
-        }
+        } else
+            logger.debug("Recalculation complete.")
     }
 
     fun recalculateNutrients(ownerId: Int, surveyId: String): Int {
