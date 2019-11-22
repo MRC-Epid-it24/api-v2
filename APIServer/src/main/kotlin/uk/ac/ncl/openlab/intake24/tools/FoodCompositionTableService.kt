@@ -15,10 +15,13 @@ import uk.ac.ncl.openlab.intake24.foodsql.Tables
 data class FoodCompositionTableHeader(val id: String, val description: String)
 
 
-data class CsvColumnMapping(val nutrientId: Int, val columnOffset: Int)
+data class CsvNutrientColumnMapping(val nutrientId: Int, val columnOffset: Int)
+
+data class CsvFieldColumnMapping(val fieldName: String, val columnOffset: Int)
 
 data class FoodCompositionCsvMapping(val rowOffset: Int, val idColumnOffset: Int, val descriptionColumnOffset: Int,
-                                     val localDescriptionColumnOffset: Int?, val nutrientColumns: List<CsvColumnMapping>)
+                                     val localDescriptionColumnOffset: Int?, val nutrientColumns: List<CsvNutrientColumnMapping>,
+                                     val fieldColumns: List<CsvFieldColumnMapping>)
 
 data class FoodCompositionTable(val id: String, val description: String, val mapping: FoodCompositionCsvMapping)
 
@@ -66,17 +69,30 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
                     .orderBy(Tables.NUTRIENT_TABLES.DESCRIPTION)
                     .fetchSingle()
 
-            val columns = it.select(
-                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.ID,
-                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TYPE_ID,
-                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET)
-                    .from(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS)
-                    .where(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TABLE_ID.eq(id))
-                    .orderBy(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET.asc())
+            val nutrientColumns = it.select(
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.ID,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.NUTRIENT_TYPE_ID,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.COLUMN_OFFSET)
+                    .from(Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS)
+                    .where(Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.NUTRIENT_TABLE_ID.eq(id))
+                    .orderBy(Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.COLUMN_OFFSET.asc())
                     .fetchArray()
                     .map {
-                        CsvColumnMapping(it[Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TYPE_ID],
-                                it[Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET])
+                        CsvNutrientColumnMapping(it[Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.NUTRIENT_TYPE_ID],
+                                it[Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.COLUMN_OFFSET])
+                    }
+
+            val fieldColumns = it.select(
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.ID,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.FIELD_NAME,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.COLUMN_OFFSET)
+                    .from(Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS)
+                    .where(Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.NUTRIENT_TABLE_ID.eq(id))
+                    .orderBy(Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.COLUMN_OFFSET.asc())
+                    .fetchArray()
+                    .map {
+                        CsvFieldColumnMapping(it[Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.FIELD_NAME],
+                                it[Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.COLUMN_OFFSET])
                     }
 
             FoodCompositionTable(
@@ -87,20 +103,21 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
                             tableRow[Tables.NUTRIENT_TABLE_CSV_MAPPING.ID_COLUMN_OFFSET],
                             tableRow[Tables.NUTRIENT_TABLE_CSV_MAPPING.DESCRIPTION_COLUMN_OFFSET],
                             tableRow[Tables.NUTRIENT_TABLE_CSV_MAPPING.LOCAL_DESCRIPTION_COLUMN_OFFSET],
-                            columns))
+                            nutrientColumns,
+                            fieldColumns))
 
         };
     }
 
-    private fun updateColumnMapping(tableId: String, mapping: List<CsvColumnMapping>, context: DSLContext) {
-        context.deleteFrom(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS)
-                .where(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TABLE_ID.eq(tableId))
+    private fun updateNutrientColumnMapping(tableId: String, mapping: List<CsvNutrientColumnMapping>, context: DSLContext) {
+        context.deleteFrom(Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS)
+                .where(Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.NUTRIENT_TABLE_ID.eq(tableId))
                 .execute();
 
-        val insert1 = context.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS,
-                Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TABLE_ID,
-                Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TYPE_ID,
-                Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET
+        val insert1 = context.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS,
+                Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.NUTRIENT_TABLE_ID,
+                Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.NUTRIENT_TYPE_ID,
+                Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.COLUMN_OFFSET
         )
 
         if (mapping.isNotEmpty()) {
@@ -110,16 +127,41 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
         }
     }
 
-    fun updateColumnMapping(tableId: String, mapping: List<CsvColumnMapping>) {
+    fun updateNutrientColumnMapping(tableId: String, mapping: List<CsvNutrientColumnMapping>) {
         foodDatabase.runTransaction {
-            updateColumnMapping(tableId, mapping, it)
+            updateNutrientColumnMapping(tableId, mapping, it)
+        }
+    }
+
+    private fun updateFieldColumnMapping(tableId: String, mapping: List<CsvFieldColumnMapping>, context: DSLContext) {
+        context.deleteFrom(Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS)
+                .where(Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.NUTRIENT_TABLE_ID.eq(tableId))
+                .execute();
+
+        val insert1 = context.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS,
+                Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.NUTRIENT_TABLE_ID,
+                Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.FIELD_NAME,
+                Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.COLUMN_OFFSET
+        )
+
+        if (mapping.isNotEmpty()) {
+            mapping.fold(insert1, { acc, columnMapping ->
+                acc.values(tableId, columnMapping.fieldName, columnMapping.columnOffset)
+            }).execute()
+        }
+    }
+
+    fun updateFieldColumnMapping(tableId: String, mapping: List<CsvFieldColumnMapping>) {
+        foodDatabase.runTransaction {
+            updateFieldColumnMapping(tableId, mapping, it)
         }
     }
 
     fun updateFoodCompositionTable(tableId: String, update: FoodCompositionTable) {
         foodDatabase.runTransaction {
 
-            updateColumnMapping(tableId, update.mapping.nutrientColumns, it)
+            updateNutrientColumnMapping(tableId, update.mapping.nutrientColumns, it)
+            updateFieldColumnMapping(tableId, update.mapping.fieldColumns, it)
 
             it.update(Tables.NUTRIENT_TABLE_CSV_MAPPING)
                     .set(Tables.NUTRIENT_TABLE_CSV_MAPPING.ROW_OFFSET, update.mapping.rowOffset)
@@ -161,10 +203,10 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
                     table.mapping.localDescriptionColumnOffset)
                     .execute()
 
-            val insert1 = it.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS,
-                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TABLE_ID,
-                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.NUTRIENT_TYPE_ID,
-                    Tables.NUTRIENT_TABLE_CSV_MAPPING_COLUMNS.COLUMN_OFFSET
+            val insert1 = it.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.NUTRIENT_TABLE_ID,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.NUTRIENT_TYPE_ID,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_NUTRIENT_COLUMNS.COLUMN_OFFSET
             )
 
             if (table.mapping.nutrientColumns.isNotEmpty()) {
@@ -172,16 +214,28 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
                     acc.values(table.id, columnMapping.nutrientId, columnMapping.columnOffset)
                 }).execute()
             }
+
+            val insert2 = it.insertInto(Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.NUTRIENT_TABLE_ID,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.FIELD_NAME,
+                    Tables.NUTRIENT_TABLE_CSV_MAPPING_FIELD_COLUMNS.COLUMN_OFFSET
+            )
+
+            if (table.mapping.fieldColumns.isNotEmpty()) {
+                table.mapping.fieldColumns.fold(insert2, { acc, columnMapping ->
+                    acc.values(table.id, columnMapping.fieldName, columnMapping.columnOffset)
+                }).execute()
+            }
         }
     }
 
-    fun updateNutrientRecords(tableId: String, records: List<FoodCompositionTableRecord>) {
+    fun updateRecords(tableId: String, records: List<FoodCompositionTableRecord>) {
         foodDatabase.runTransaction {
-            updateNutrientRecords(tableId, records, it)
+            updateRecords(tableId, records, it)
         }
     }
 
-    fun updateNutrientRecords(tableId: String, records: List<FoodCompositionTableRecord>, context: DSLContext) {
+    fun updateRecords(tableId: String, records: List<FoodCompositionTableRecord>, context: DSLContext) {
         val recordsInsertQuery = context.insertInto(Tables.NUTRIENT_TABLE_RECORDS,
                 Tables.NUTRIENT_TABLE_RECORDS.ID,
                 Tables.NUTRIENT_TABLE_RECORDS.NUTRIENT_TABLE_ID,
@@ -214,6 +268,24 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
 
         records.fold(nutrientsInsertQuery) { q1, record ->
             record.nutrients.fold(q1) { q2, col ->
+                q2.values(tableId, record.recordId, col.first, col.second)
+            }
+        }.execute()
+
+
+        context.deleteFrom(Tables.NUTRIENT_TABLE_RECORDS_FIELDS)
+                .where(Tables.NUTRIENT_TABLE_RECORDS_FIELDS.NUTRIENT_TABLE_ID.eq(tableId)
+                        .and(Tables.NUTRIENT_TABLE_RECORDS_FIELDS.NUTRIENT_TABLE_RECORD_ID.`in`(records.map { it.recordId })))
+                .execute()
+
+        val fieldsInsertQuery = context.insertInto(Tables.NUTRIENT_TABLE_RECORDS_FIELDS,
+                Tables.NUTRIENT_TABLE_RECORDS_FIELDS.NUTRIENT_TABLE_ID,
+                Tables.NUTRIENT_TABLE_RECORDS_FIELDS.NUTRIENT_TABLE_RECORD_ID,
+                Tables.NUTRIENT_TABLE_RECORDS_FIELDS.FIELD_NAME,
+                Tables.NUTRIENT_TABLE_RECORDS_FIELDS.FIELD_VALUE)
+
+        records.fold(fieldsInsertQuery) { q1, record ->
+            record.fields.fold(q1) { q2, col ->
                 q2.values(tableId, record.recordId, col.first, col.second)
             }
         }.execute()
@@ -256,5 +328,27 @@ class FoodCompositionTableService @Inject() constructor(@Named("foods") private 
                             it[Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.NUTRIENT_TYPE_ID], it[Tables.NUTRIENT_TABLE_RECORDS_NUTRIENTS.UNITS_PER_100G])
                 }
                 .groupBy({ it.ref }, { Pair(it.nutrientType, it.unitsPer100g) })
+    }
+
+    private data class FieldsRow(val ref: FoodCompositionTableReference, val fieldName: String, val value: String)
+
+    fun getFields(references: Set<FoodCompositionTableReference>): Map<FoodCompositionTableReference, List<Pair<String, String>>> {
+        return foodDatabase.runTransaction { context ->
+            getFields(references, context)
+        }
+    }
+
+    fun getFields(references: Set<FoodCompositionTableReference>, context: DSLContext): Map<FoodCompositionTableReference, List<Pair<String, String>>> {
+        return context.select(Tables.NUTRIENT_TABLE_RECORDS_FIELDS.NUTRIENT_TABLE_ID, Tables.NUTRIENT_TABLE_RECORDS_FIELDS.NUTRIENT_TABLE_RECORD_ID,
+                Tables.NUTRIENT_TABLE_RECORDS_FIELDS.FIELD_NAME, Tables.NUTRIENT_TABLE_RECORDS_FIELDS.FIELD_VALUE)
+                .from(Tables.NUTRIENT_TABLE_RECORDS_FIELDS)
+                .where(row(Tables.NUTRIENT_TABLE_RECORDS_FIELDS.NUTRIENT_TABLE_ID, Tables.NUTRIENT_TABLE_RECORDS_FIELDS.NUTRIENT_TABLE_RECORD_ID).`in`(references.map { r ->
+                    row(r.tableId, r.recordId)
+                }))
+                .fetch {
+                    FieldsRow(FoodCompositionTableReference(it[Tables.NUTRIENT_TABLE_RECORDS_FIELDS.NUTRIENT_TABLE_ID], it[Tables.NUTRIENT_TABLE_RECORDS_FIELDS.NUTRIENT_TABLE_RECORD_ID]),
+                            it[Tables.NUTRIENT_TABLE_RECORDS_FIELDS.FIELD_NAME], it[Tables.NUTRIENT_TABLE_RECORDS_FIELDS.FIELD_VALUE])
+                }
+                .groupBy({ it.ref }, { Pair(it.fieldName, it.value) })
     }
 }

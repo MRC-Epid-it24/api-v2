@@ -8,7 +8,7 @@ import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 
 
-data class FoodCompositionTableRecord(val recordId: String, val englishDescription: String, val localDescription: String?, val nutrients: List<Pair<Int, Double>>)
+data class FoodCompositionTableRecord(val recordId: String, val englishDescription: String, val localDescription: String?, val nutrients: List<Pair<Int, Double>>, val fields: List<Pair<String, String>>)
 
 data class CsvParseResult(val rows: List<FoodCompositionTableRecord>, val warnings: List<String>)
 
@@ -20,6 +20,7 @@ object FoodCompositionCsvParser {
     private fun parseRow(row: Array<String>, rowIndex: Int, mapping: FoodCompositionCsvMapping, nutrientTypeDescriptions: Map<Int, String>): Pair<FoodCompositionTableRecord, List<String>> {
         val nutrients = mutableListOf<Pair<Int, Double>>()
         val warnings = mutableListOf<String>()
+        val fields = mutableListOf<Pair<String, String>>()
 
         val recordId = row[mapping.idColumnOffset]
         val description = row[mapping.descriptionColumnOffset]
@@ -44,7 +45,16 @@ object FoodCompositionCsvParser {
             }
         }
 
-        return Pair(FoodCompositionTableRecord(recordId, description, localDescription, nutrients), warnings)
+        mapping.fieldColumns.forEach { col ->
+            try {
+                fields.add(Pair(col.fieldName, row[col.columnOffset]))
+            } catch (e: Exception) {
+                warnings.add("Failed to get ${col.columnOffset} for row $rowIndex, column ${offsetToExcelColumn(col.columnOffset)}: ${e.javaClass.simpleName}: ${e.message
+                        ?: ""}")
+            }
+        }
+
+        return Pair(FoodCompositionTableRecord(recordId, description, localDescription, nutrients, fields), warnings)
     }
 
 
@@ -63,14 +73,14 @@ object FoodCompositionCsvParser {
         return CsvParseResult(parsedRows, warnings)
     }
 
-    fun parseMappingCsv(input: InputStream): List<CsvColumnMapping> {
+    fun parseMappingCsv(input: InputStream): List<CsvNutrientColumnMapping> {
         val csvRows = CSVReader(InputStreamReader(input, StandardCharsets.UTF_8)).iterator().asSequence().drop(1)
 
         return csvRows.map {
             val nutrientId = it[0].toInt()
             val columnOffset = excelColumnToOffset(it[1])
 
-            CsvColumnMapping(nutrientId, columnOffset)
+            CsvNutrientColumnMapping(nutrientId, columnOffset)
         }.toList()
     }
 }

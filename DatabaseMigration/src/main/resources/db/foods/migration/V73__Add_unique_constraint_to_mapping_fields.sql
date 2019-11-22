@@ -1,0 +1,1 @@
+alter table nutrient_table_csv_mapping_field_columns add constraint nutrient_table_csv_mapping_field_columns_unique unique (nutrient_table_id, field_name);

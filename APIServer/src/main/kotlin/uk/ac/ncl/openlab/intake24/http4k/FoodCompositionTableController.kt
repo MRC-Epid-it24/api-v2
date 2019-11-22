@@ -83,7 +83,7 @@ class FoodCompositionTableController @Inject constructor(
                 records.chunked(updateBatchSize).forEachIndexed { batchIndex, batch ->
                     val progress = (batchIndex * updateBatchSize) / recordCount.toFloat()
                     taskStatusManager.updateProgress(taskId, progress)
-                    fctService.updateNutrientRecords(tableId, batch)
+                    fctService.updateRecords(tableId, batch)
 
                     logger.debug("Updated ${(batchIndex * updateBatchSize) + batch.size} out of $recordCount (${"%.1f%%".format(progress * 100.0f)})")
                 }
@@ -176,7 +176,7 @@ class FoodCompositionTableController @Inject constructor(
             return if (file != null) {
                 try {
                     val parseResult = FoodCompositionCsvParser.parseMappingCsv(file.content)
-                    fctService.updateColumnMapping(tableId, parseResult)
+                    fctService.updateNutrientColumnMapping(tableId, parseResult)
 
                     Response(Status.OK)
                 } catch (e: CsvParseException) {

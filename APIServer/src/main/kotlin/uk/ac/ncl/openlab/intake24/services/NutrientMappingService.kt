@@ -72,14 +72,25 @@ class NutrientMappingService @Inject() constructor(@Named("system") val systemDa
 
     private data class SubmissionNutrientsRow(val submissionFoodId: Int, val nutrientTypeId: Int, val amount: Double)
 
+    private data class SubmissionFieldsRow(val submissionFoodId: Int, val fieldName: String, val value: String)
+
     private fun recalculateBatch(foods: List<RemappingFood>) {
-        val batchNutrients = fctService.getNutrients(foods.map { it.fctReference }.toSet())
+        val uniqueReferences = foods.map { it.fctReference }.toSet()
+
+        val batchNutrients = fctService.getNutrients(uniqueReferences)
+        val batchFields = fctService.getFields(uniqueReferences)
 
         logger.debug("Fetched nutrient data for the next batch, ${batchNutrients.size} entries")
 
-        val recalculated = foods.flatMap { food ->
+        val recalculatedNutrients = foods.flatMap { food ->
             batchNutrients[food.fctReference]!!.map {
                 SubmissionNutrientsRow(food.id, it.first, it.second / 100.0 * food.portionWeight)
+            }
+        }
+
+        val fields = foods.flatMap { food ->
+            batchFields[food.fctReference]!!.map {
+                SubmissionFieldsRow(food.id, it.first, it.second)
             }
         }
 
@@ -90,12 +101,21 @@ class NutrientMappingService @Inject() constructor(@Named("system") val systemDa
             it.deleteFrom(SURVEY_SUBMISSION_NUTRIENTS)
                     .where(SURVEY_SUBMISSION_NUTRIENTS.FOOD_ID.`in`(foods.map { it.id })).execute()
 
-            logger.debug("Inserting new nutrient data, ${recalculated.size} new rows")
+            it.deleteFrom(SURVEY_SUBMISSION_FIELDS)
+                    .where(SURVEY_SUBMISSION_FIELDS.FOOD_ID.`in`(foods.map { it.id })).execute()
+
+            logger.debug("Inserting new nutrient data, ${recalculatedNutrients.size} new rows")
 
             val insert = it.insertInto(SURVEY_SUBMISSION_NUTRIENTS, SURVEY_SUBMISSION_NUTRIENTS.FOOD_ID, SURVEY_SUBMISSION_NUTRIENTS.NUTRIENT_TYPE_ID, SURVEY_SUBMISSION_NUTRIENTS.AMOUNT)
 
-            recalculated.fold(insert) { query, row ->
+            recalculatedNutrients.fold(insert) { query, row ->
                 query.values(row.submissionFoodId, row.nutrientTypeId, row.amount)
+            }.execute()
+
+            val insert2 = it.insertInto(SURVEY_SUBMISSION_FIELDS, SURVEY_SUBMISSION_FIELDS.FOOD_ID, SURVEY_SUBMISSION_FIELDS.FIELD_NAME, SURVEY_SUBMISSION_FIELDS.VALUE)
+
+            fields.fold(insert2) { query, row ->
+                query.values(row.submissionFoodId, row.fieldName, row.value)
             }.execute()
         }
     }
