@@ -82,41 +82,68 @@ class NutrientMappingService @Inject() constructor(@Named("system") val systemDa
 
         logger.debug("Fetched nutrient data for the next batch, ${batchNutrients.size} entries")
 
-        val recalculatedNutrients = foods.flatMap { food ->
-            batchNutrients[food.fctReference]!!.map {
+        val (foodsWithNewData, foodsWithoutNewData) = foods.partition { batchNutrients.containsKey(it.fctReference) }
+
+        val newNutrients = foodsWithNewData.flatMap { food ->
+            batchNutrients.getValue(food.fctReference).map {
                 SubmissionNutrientsRow(food.id, it.first, it.second / 100.0 * food.portionWeight)
             }
         }
 
-        val fields = foods.flatMap { food ->
-            batchFields[food.fctReference]!!.map {
+        val (foodsWithNewFields, foodsWithoutNewFields) = foods.partition { batchFields.containsKey(it.fctReference) }
+
+        val newFields = foodsWithNewFields.flatMap { food ->
+            batchFields.getValue(food.fctReference).map {
                 SubmissionFieldsRow(food.id, it.first, it.second)
             }
         }
 
+        if (foodsWithoutNewData.isNotEmpty()) {
+            val references = foodsWithoutNewData.map { "(${it.fctReference.tableId}, ${it.fctReference.recordId})" }
+            logger.warn("No nutrient data available for the following food composition table references:")
+            logger.warn("  ${references.joinToString(", ")}")
+        }
+
+        if (foodsWithoutNewFields.isNotEmpty()) {
+            val references = foodsWithoutNewFields.map { "(${it.fctReference.tableId}, ${it.fctReference.recordId})" }
+            logger.warn("No fields data available for the following food composition table references:")
+            logger.warn("  ${references.joinToString(", ")}")
+        }
+
         systemDatabase.runTransaction {
 
-            logger.debug("Deleting current nutrient data")
+            if (foodsWithNewData.isNotEmpty()) {
+                logger.debug("Deleting old nutrient data")
 
-            it.deleteFrom(SURVEY_SUBMISSION_NUTRIENTS)
-                    .where(SURVEY_SUBMISSION_NUTRIENTS.FOOD_ID.`in`(foods.map { it.id })).execute()
+                it.deleteFrom(SURVEY_SUBMISSION_NUTRIENTS)
+                        .where(SURVEY_SUBMISSION_NUTRIENTS.FOOD_ID.`in`(foodsWithNewData.map { it.id })).execute()
+            }
 
-            it.deleteFrom(SURVEY_SUBMISSION_FIELDS)
-                    .where(SURVEY_SUBMISSION_FIELDS.FOOD_ID.`in`(foods.map { it.id })).execute()
+            if (newNutrients.isNotEmpty()) {
+                logger.debug("Inserting new nutrient data, ${newNutrients.size} new rows")
 
-            logger.debug("Inserting new nutrient data, ${recalculatedNutrients.size} new rows")
+                val insert = it.insertInto(SURVEY_SUBMISSION_NUTRIENTS, SURVEY_SUBMISSION_NUTRIENTS.FOOD_ID, SURVEY_SUBMISSION_NUTRIENTS.NUTRIENT_TYPE_ID, SURVEY_SUBMISSION_NUTRIENTS.AMOUNT)
 
-            val insert = it.insertInto(SURVEY_SUBMISSION_NUTRIENTS, SURVEY_SUBMISSION_NUTRIENTS.FOOD_ID, SURVEY_SUBMISSION_NUTRIENTS.NUTRIENT_TYPE_ID, SURVEY_SUBMISSION_NUTRIENTS.AMOUNT)
+                newNutrients.fold(insert) { query, row ->
+                    query.values(row.submissionFoodId, row.nutrientTypeId, row.amount)
+                }.execute()
+            }
 
-            recalculatedNutrients.fold(insert) { query, row ->
-                query.values(row.submissionFoodId, row.nutrientTypeId, row.amount)
-            }.execute()
+            if (foodsWithNewFields.isNotEmpty()) {
+                logger.debug("Deleting old fields data")
+                it.deleteFrom(SURVEY_SUBMISSION_FIELDS)
+                        .where(SURVEY_SUBMISSION_FIELDS.FOOD_ID.`in`(foodsWithNewFields.map { it.id })).execute()
+            }
 
-            val insert2 = it.insertInto(SURVEY_SUBMISSION_FIELDS, SURVEY_SUBMISSION_FIELDS.FOOD_ID, SURVEY_SUBMISSION_FIELDS.FIELD_NAME, SURVEY_SUBMISSION_FIELDS.VALUE)
+            if (newFields.isNotEmpty()) {
+                logger.debug("Inserting new fields data, ${newFields.size} new rows")
 
-            fields.fold(insert2) { query, row ->
-                query.values(row.submissionFoodId, row.fieldName, row.value)
-            }.execute()
+                val insert2 = it.insertInto(SURVEY_SUBMISSION_FIELDS, SURVEY_SUBMISSION_FIELDS.FOOD_ID, SURVEY_SUBMISSION_FIELDS.FIELD_NAME, SURVEY_SUBMISSION_FIELDS.VALUE)
+
+                newFields.fold(insert2) { query, row ->
+                    query.values(row.submissionFoodId, row.fieldName, row.value)
+                }.execute()
+            }
         }
     }
 
