@@ -9,6 +9,7 @@ import org.http4k.core.HttpHandler
 import org.http4k.core.Request
 import org.http4k.core.Response
 import org.http4k.core.Status
+import org.http4k.routing.path
 import org.slf4j.LoggerFactory
 
 object Intake24Roles {
@@ -136,5 +137,23 @@ class Security @Inject() constructor(private val authenticate: Intake24Authentic
 
     fun allowSurveyAdmins(requestHandler: AuthenticatedHttpHandler): HttpHandler =
             allowAnyOf(listOf(Intake24Roles.surveyAdmin), requestHandler)
+
+    fun allowSurveyAdminsOrStaff(requestHandler: AuthenticatedHttpHandler): HttpHandler =
+            check({ user, request ->
+
+                // If the user is a global survey admin no need to check the specific survey Id
+                if (user.roles.contains(Intake24Roles.surveyAdmin))
+                    true
+                else {
+                    // Otherwise check the surveyId path parameter
+                    // all requests protected by this method must have it
+                    val surveyId = request.path("surveyId")
+
+                    if (surveyId == null)
+                        false
+                    else
+                        user.roles.contains(Intake24Roles.surveyStaff(surveyId))
+                }
+            }, requestHandler)
 
 }
