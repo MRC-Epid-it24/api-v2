@@ -39,6 +39,7 @@ data class CategoryCode(val code: String) : FoodOrCategoryCode()
 
 data class AssociatedFood(val foodOrCategoryCode: FoodOrCategoryCode, val promptText: String, val linkAsMain: Boolean, val genericName: String)
 
+data class LocalFoodsListRow(val code: String, val englishDescription: String, val localDescription: String?)
 
 data class PortionSizeMethod(val method: String, val description: String, val imageUrl: String, val useForRecipes: Boolean,
                              val conversionFactor: Double, val parameters: List<PortionSizeMethodParameter>) {
@@ -532,6 +533,22 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
         } else {
             logger.debug("Empty foods list")
         }
+    }
+
+    fun getLocalFoodsList(localeId: String, offset: Int, limit: Int, context: DSLContext): List<LocalFoodsListRow> {
+        return context.select(FOODS_LOCAL_LISTS.FOOD_CODE, FOODS.DESCRIPTION, FOODS_LOCAL.LOCAL_DESCRIPTION)
+                .from(FOODS_LOCAL_LISTS
+                        .join(FOODS).on(FOODS_LOCAL_LISTS.FOOD_CODE.eq(FOODS.CODE))
+                        .join(FOODS_LOCAL).on(FOODS_LOCAL_LISTS.FOOD_CODE.eq(FOODS_LOCAL.FOOD_CODE).and(FOODS_LOCAL_LISTS.LOCALE_ID.eq(FOODS_LOCAL.LOCALE_ID))))
+                .where(FOODS_LOCAL_LISTS.LOCALE_ID.eq(localeId))
+                .orderBy(FOODS_LOCAL_LISTS.FOOD_CODE)
+                .offset(offset)
+                .limit(limit)
+                .fetch { record -> LocalFoodsListRow(record.value1(), record.value2(), record.value3()) }
+    }
+
+    fun getLocalFoodsList(localeId: String, offset: Int, limit: Int): List<LocalFoodsListRow> {
+        return foodDatabase.runTransaction { getLocalFoodsList(localeId, offset, limit, it) }
     }
 
     fun copyFoods(foods: List<CopyFoodV2>, context: DSLContext) {
