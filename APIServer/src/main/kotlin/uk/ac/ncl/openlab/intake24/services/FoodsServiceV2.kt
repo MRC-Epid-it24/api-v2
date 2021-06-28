@@ -7,6 +7,7 @@ import com.google.inject.name.Named
 import org.apache.commons.lang3.StringUtils
 import org.jooq.DSLContext
 import org.jooq.impl.DSL.*
+import org.jooq.impl.SQLDataType
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableReference
@@ -40,6 +41,8 @@ data class CategoryCode(val code: String) : FoodOrCategoryCode()
 data class AssociatedFood(val foodOrCategoryCode: FoodOrCategoryCode, val promptText: String, val linkAsMain: Boolean, val genericName: String)
 
 data class LocalFoodsListRow(val code: String, val englishDescription: String, val localDescription: String?)
+
+data class CategoryLocalRow(val categoryCode: String, val localeId: String, val localDescription: String, val simpleLocalDescription: String)
 
 data class PortionSizeMethod(val method: String, val description: String, val imageUrl: String, val useForRecipes: Boolean,
                              val conversionFactor: Double, val parameters: List<PortionSizeMethodParameter>) {
@@ -166,6 +169,62 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                 return emptyMap()
         }
 
+        fun getCategoryPortionSizeMethods(categoryCodes: List<String>, localeId: String, context: DSLContext): Map<String, List<PortionSizeMethod>> {
+            if (categoryCodes.isNotEmpty()) {
+
+                val portionSizeMethodRows = context.select(
+                    CATEGORIES_PORTION_SIZE_METHODS.ID,
+                    CATEGORIES_PORTION_SIZE_METHODS.CATEGORY_CODE,
+                    CATEGORIES_PORTION_SIZE_METHODS.LOCALE_ID,
+                    CATEGORIES_PORTION_SIZE_METHODS.METHOD,
+                    CATEGORIES_PORTION_SIZE_METHODS.DESCRIPTION,
+                    CATEGORIES_PORTION_SIZE_METHODS.IMAGE_URL,
+                    CATEGORIES_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                    CATEGORIES_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+                    .from(CATEGORIES_PORTION_SIZE_METHODS)
+                    .where(CATEGORIES_PORTION_SIZE_METHODS.CATEGORY_CODE.`in`(categoryCodes).and(CATEGORIES_PORTION_SIZE_METHODS.LOCALE_ID.eq(localeId)))
+                    .fetchArray()
+
+                val ids = portionSizeMethodRows.map { it[CATEGORIES_PORTION_SIZE_METHODS.ID] }
+
+                val parameters = context.select(
+                    CATEGORIES_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID,
+                    CATEGORIES_PORTION_SIZE_METHOD_PARAMS.NAME,
+                    CATEGORIES_PORTION_SIZE_METHOD_PARAMS.VALUE)
+                    .from(CATEGORIES_PORTION_SIZE_METHOD_PARAMS)
+                    .where(CATEGORIES_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID.`in`(ids))
+                    .fold(emptyMap<Int, List<PortionSizeMethodParameter>>()) { map, row ->
+                        val id = row[CATEGORIES_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID]
+                        val list = map[id] ?: emptyList()
+
+                        map + Pair(id, list + PortionSizeMethodParameter(row[CATEGORIES_PORTION_SIZE_METHOD_PARAMS.NAME], row[CATEGORIES_PORTION_SIZE_METHOD_PARAMS.VALUE]))
+                    }
+
+
+                val empty = categoryCodes.fold(emptyMap<String, List<PortionSizeMethod>>()) { map, code ->
+                    map + Pair(code, emptyList())
+                }
+
+                return portionSizeMethodRows.fold(empty) { map, row ->
+
+                    val categoryCode = row[CATEGORIES_PORTION_SIZE_METHODS.CATEGORY_CODE]
+                    val methods = map[categoryCode] ?: emptyList()
+
+                    map + Pair(categoryCode, methods + PortionSizeMethod(
+                        row[CATEGORIES_PORTION_SIZE_METHODS.METHOD],
+                        row[CATEGORIES_PORTION_SIZE_METHODS.DESCRIPTION],
+                        row[CATEGORIES_PORTION_SIZE_METHODS.IMAGE_URL],
+                        row[CATEGORIES_PORTION_SIZE_METHODS.USE_FOR_RECIPES],
+                        row[CATEGORIES_PORTION_SIZE_METHODS.CONVERSION_FACTOR],
+                        parameters[row[CATEGORIES_PORTION_SIZE_METHODS.ID]] ?: emptyList())
+
+                    )
+                }
+
+            } else
+                return emptyMap()
+        }
+
 
         fun updatePortionSizeMethods(updates: List<Pair<String, List<PortionSizeMethod>>>, localeId: String, context: DSLContext) {
             if (updates.isNotEmpty()) {
@@ -201,6 +260,56 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                                 FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID,
                                 FOODS_PORTION_SIZE_METHOD_PARAMS.NAME,
                                 FOODS_PORTION_SIZE_METHOD_PARAMS.VALUE)
+
+                        paramUpdates.fold(paramsInsertQuery1) { query, update ->
+
+                            val methodId = update.first
+                            val parameters = update.second
+
+                            parameters.fold(query) { query, parameter ->
+                                query.values(methodId, parameter.name, parameter.value)
+                            }
+                        }.execute()
+                    }
+                }
+            }
+        }
+
+        fun updateCategoryPortionSizeMethods(updates: List<Pair<String, List<PortionSizeMethod>>>, localeId: String, context: DSLContext) {
+            if (updates.isNotEmpty()) {
+                context.deleteFrom(CATEGORIES_PORTION_SIZE_METHODS)
+                    .where(CATEGORIES_PORTION_SIZE_METHODS.CATEGORY_CODE.`in`(updates.map { it.first }).and(CATEGORIES_PORTION_SIZE_METHODS.LOCALE_ID.eq(localeId)))
+                    .execute()
+
+                if (updates.any { it.second.isNotEmpty() }) {
+                    val insertQuery1 = context.insertInto(CATEGORIES_PORTION_SIZE_METHODS,
+                        CATEGORIES_PORTION_SIZE_METHODS.CATEGORY_CODE,
+                        CATEGORIES_PORTION_SIZE_METHODS.LOCALE_ID,
+                        CATEGORIES_PORTION_SIZE_METHODS.METHOD,
+                        CATEGORIES_PORTION_SIZE_METHODS.DESCRIPTION,
+                        CATEGORIES_PORTION_SIZE_METHODS.IMAGE_URL,
+                        CATEGORIES_PORTION_SIZE_METHODS.USE_FOR_RECIPES,
+                        CATEGORIES_PORTION_SIZE_METHODS.CONVERSION_FACTOR)
+
+                    val methodCodes = updates.fold(insertQuery1) { query, update ->
+                        val categoryCode = update.first
+                        val methods = update.second
+
+                        methods.fold(query) { query, method ->
+                            query.values(categoryCode, localeId, method.method, method.description, method.imageUrl,
+                                method.useForRecipes, method.conversionFactor)
+                        }
+                    }.returningResult(CATEGORIES_PORTION_SIZE_METHODS.ID).fetch().intoArray(CATEGORIES_PORTION_SIZE_METHODS.ID)
+
+
+                    val paramUpdates = methodCodes.zip(updates.flatMap { it.second.map { it.parameters } })
+
+                    if (paramUpdates.any { it.second.isNotEmpty() }) {
+                        val paramsInsertQuery1 = context.insertInto(
+                            CATEGORIES_PORTION_SIZE_METHOD_PARAMS,
+                            CATEGORIES_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID,
+                            CATEGORIES_PORTION_SIZE_METHOD_PARAMS.NAME,
+                            CATEGORIES_PORTION_SIZE_METHOD_PARAMS.VALUE)
 
                         paramUpdates.fold(paramsInsertQuery1) { query, update ->
 
@@ -633,6 +742,32 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
         }
     }
 
+    fun copyCategoryLocal(sourceLocaleId: String, destLocaleId: String, context: DSLContext) {
+        validateLocaleId(sourceLocaleId, context)
+        validateLocaleId(destLocaleId, context)
+
+        context.insertInto(
+            CATEGORIES_LOCAL,
+            CATEGORIES_LOCAL.CATEGORY_CODE,
+            CATEGORIES_LOCAL.LOCALE_ID,
+            CATEGORIES_LOCAL.LOCAL_DESCRIPTION,
+            CATEGORIES_LOCAL.SIMPLE_LOCAL_DESCRIPTION,
+            CATEGORIES_LOCAL.VERSION
+        )
+            .select(
+                context.select(
+                    CATEGORIES_LOCAL.CATEGORY_CODE,
+                    inline(destLocaleId),
+                    CATEGORIES_LOCAL.LOCAL_DESCRIPTION,
+                    CATEGORIES_LOCAL.SIMPLE_LOCAL_DESCRIPTION,
+                    inline("uuid_generate_v4()", SQLDataType.UUID)
+                )
+                    .from(CATEGORIES_LOCAL)
+                    .where(
+                        CATEGORIES_LOCAL.CATEGORY_CODE.eq(sourceLocaleId)
+                    )
+            )
+    }
 
     fun copyLocalFoods(sourceLocale: String, destLocale: String, foods: List<CopyLocalV2>) {
         foodDatabase.runTransaction {
@@ -699,6 +834,10 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
         }
     }
 
+    fun getCategoryCodes(context: DSLContext): Array<String> {
+        return context.select(CATEGORIES.CODE).from(CATEGORIES).fetchArray(CATEGORIES.CODE)
+    }
+
 
     fun getUncategorisedFoods(localeId: String): List<FoodHeader> {
         return foodDatabase.runTransaction {
@@ -750,6 +889,14 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
 
             CategoryContents(foodHeaders, categoryHeaders)
         }
+    }
+
+    fun copyCategoryPortionSizeMethods(sourceLocale: String, destLocale: String, context: DSLContext) {
+        val categoryCodes = getCategoryCodes(context).toList()
+        val portionSizeMethods = getCategoryPortionSizeMethods(categoryCodes, sourceLocale, context)
+            .toList()
+            .filter { it.second.isNotEmpty() }
+        updateCategoryPortionSizeMethods(portionSizeMethods, destLocale, context)
     }
 
     /*
