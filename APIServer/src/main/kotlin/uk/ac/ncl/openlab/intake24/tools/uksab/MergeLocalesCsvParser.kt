@@ -16,8 +16,9 @@ object MergeLocalesCsvParser {
     private const val ROW_OFFSET = 1
 
     private val FOOD_CODE = Pair(0, "Intake24 code")
-    private val SOURCE_LOCALE = Pair(1, "Source locale")
-    private val LOCAL_DESCRIPTION = Pair(2, "New local description")
+    private val LOCAL_DESCRIPTION = Pair(1, "Local description")
+    private val SOURCE_LOCALE = Pair(2, "Source locale")
+    private val NEW_LOCAL_DESCRIPTION = Pair(3, "New local description")
 
     private val TREAT_AS_BLANK = setOf("0", "#N/A")
 
@@ -33,9 +34,11 @@ object MergeLocalesCsvParser {
         val row = SafeRowReader(cleanedRow, rowIndex + ROW_OFFSET)
 
         return row.getColumn(FOOD_CODE).flatMap { foodCode ->
-            row.getColumn(SOURCE_LOCALE).flatMap { sourceLocale ->
-                row.getColumn(LOCAL_DESCRIPTION).flatMap { localDescription ->
-                    Right(MergeLocalesRow(foodCode, sourceLocale, localDescription))
+            row.getColumn(LOCAL_DESCRIPTION).flatMap { localDescription ->
+                row.getColumn(SOURCE_LOCALE).flatMap { sourceLocale ->
+                    row.getOptionalColumn(NEW_LOCAL_DESCRIPTION).flatMap { newLocalDescription ->
+                        Right(MergeLocalesRow(foodCode, sourceLocale, newLocalDescription ?: localDescription))
+                    }
                 }
             }
         }
@@ -54,6 +57,8 @@ object MergeLocalesCsvParser {
                 is Either.Left -> errors.add(rowResult.a)
             }
         }
+
+        rows.groupBy { it.foodCode }.filter { it.value.size > 1 }.keys.forEach { errors.add("Duplicate row found for food code $it")}
 
         return Pair(errors, rows)
     }

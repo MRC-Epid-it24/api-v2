@@ -51,6 +51,7 @@ class MergeLocalesService @Inject() constructor(
             foodsService.copyCategoryPortionSizeMethods(mergeLocaleId, destLocaleId, it)
             foodsService.createLocalFoods(inheritFromBase, destLocaleId, it)
             foodsService.copyLocalFoods(mergeLocaleId, destLocaleId, copyFromMerge, it)
+            foodsService.addFoodsToLocale(foods.map { it.foodCode }, destLocaleId)
         }
     }
 }

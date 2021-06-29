@@ -10,6 +10,7 @@ import org.jooq.impl.DSL.*
 import org.jooq.impl.SQLDataType
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
+import uk.ac.ncl.openlab.intake24.foodsql.Routines
 import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableReference
 import uk.ac.ncl.openlab.intake24.foodsql.Tables.*
 import java.util.*
@@ -760,13 +761,13 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                     inline(destLocaleId),
                     CATEGORIES_LOCAL.LOCAL_DESCRIPTION,
                     CATEGORIES_LOCAL.SIMPLE_LOCAL_DESCRIPTION,
-                    inline("uuid_generate_v4()", SQLDataType.UUID)
+                    Routines.uuidGenerateV4()
                 )
                     .from(CATEGORIES_LOCAL)
                     .where(
-                        CATEGORIES_LOCAL.CATEGORY_CODE.eq(sourceLocaleId)
+                        CATEGORIES_LOCAL.LOCALE_ID.eq(sourceLocaleId)
                     )
-            )
+            ).execute()
     }
 
     fun copyLocalFoods(sourceLocale: String, destLocale: String, foods: List<CopyLocalV2>) {

@@ -9,6 +9,8 @@ import org.http4k.routing.routes
 
 class FoodAdminRoutes @Inject() constructor(foodsController: FoodsController,
                                             deriveLocaleController: DeriveLocaleController,
+                                            mergeLocalesController: MergeLocalesController,
+                                            uksaUpdatePsmController: UKSAUpdatePsmController,
                                             foodFrequencyStatsController: FoodFrequencyStatsController,
                                             nutrientMappingController: NutrientMappingController,
                                             security: Security) {
@@ -39,6 +41,8 @@ class FoodAdminRoutes @Inject() constructor(foodsController: FoodsController,
                     "/copy" bind Method.POST to security.allowFoodAdmins(foodsController::copyFoods),
                     "/copy-local" bind Method.POST to security.allowFoodAdmins(foodsController::copyLocalFoods),
                     "/derive-locale" bind Method.POST to security.allowFoodAdmins(deriveLocaleController::deriveLocale),
+                    "/merge-locales" bind Method.POST to security.allowFoodAdmins(mergeLocalesController::mergeLocales),
+                    "/update-uk-sa-psm" bind Method.POST to security.allowFoodAdmins(uksaUpdatePsmController::updatePortionSizes),
                     "/frequencies" bind Method.POST to security.allowFoodAdmins(foodFrequencyStatsController::exportFrequencies),
                     "/{localeId}/export-mapping" bind Method.POST to security.check(::canReadLocalFoods, nutrientMappingController::exportMapping))
 }

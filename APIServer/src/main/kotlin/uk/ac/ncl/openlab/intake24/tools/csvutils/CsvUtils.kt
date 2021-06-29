@@ -57,6 +57,19 @@ class SafeRowReader(private val row: Array<String>, private val rowIndex: Int) {
         }
     }
 
+    fun getOptionalColumn(key: Pair<Int, String>): Either<String, String?> {
+        return if (key.first >= row.size)
+            Right(null)
+        else {
+            val value = row[key.first].trim()
+
+            if (value.isBlank())
+                Right(null)
+            else
+                Right(value)
+        }
+    }
+
     fun getOneOf(key1: Pair<Int, String>, key2: Pair<Int, String>): Either<String, String> {
         return when {
             key1.first < row.size && row[key1.first].isNotBlank() -> Right(row[key1.first].trim())
