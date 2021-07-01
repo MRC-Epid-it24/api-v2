@@ -21,7 +21,7 @@ class UKSAUpdatePsmService @Inject() constructor(
     private val batchSize = 200
 
     private val asServedReplacements = mapOf(
-        "SAB_newfishcurry1" to Pair("SAB_UK_newfishcurry1", "SAB_newfishcurry1_leftovers"),
+        "SAB_newfishcurry1" to Pair("SA_UK_newfishcurry1", "SAB_newfishcurry1_leftovers"),
         "SAB_newmeatcurry1" to Pair("SA_UK_newmeatcurry1", "SAB_newmeatcurry1_leftovers"),
         "SAB_newmeatrice1" to Pair("SA_UK_newmeatrice1", "SAB_newmeatrice1_leftovers"),
         "SAB_newstirfried1" to Pair("SA_UK_newstirfried1", "SAB_newstirfried1_leftovers"),
