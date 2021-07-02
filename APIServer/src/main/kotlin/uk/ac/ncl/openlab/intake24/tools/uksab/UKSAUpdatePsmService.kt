@@ -26,7 +26,7 @@ class UKSAUpdatePsmService @Inject() constructor(
         "SAB_newmeatrice1" to Pair("SA_UK_newmeatrice1", "SAB_newmeatrice1_leftovers"),
         "SAB_newstirfried1" to Pair("SA_UK_newstirfried1", "SAB_newstirfried1_leftovers"),
         "SAB_newvegrice1" to Pair("SA_UK_newvegrice1", "SAB_newvegrice1_leftovers"),
-        "SAB_risotto" to Pair("SA_UK_risotto", " NDNSv1_risotto_leftovers")
+        "SAB_risotto" to Pair("SA_UK_risotto", "NDNS_risotto_leftovers")
     )
 
     private fun drop(method: PortionSizeMethod): Boolean {
