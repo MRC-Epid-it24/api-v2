@@ -14,7 +14,9 @@ import io.netty.channel.socket.nio.NioServerSocketChannel
 import io.netty.handler.codec.http.HttpObjectAggregator
 import io.netty.handler.codec.http.HttpServerCodec
 import org.http4k.core.*
+import org.http4k.filter.AllowAll
 import org.http4k.filter.CorsPolicy
+import org.http4k.filter.OriginPolicy
 import org.http4k.filter.ServerFilters
 import org.http4k.routing.path
 import org.http4k.server.Http4kChannelHandler
@@ -29,13 +31,10 @@ import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.tools.TaskStatusManager
-import java.lang.RuntimeException
 import java.net.InetSocketAddress
 import java.time.OffsetDateTime
-import java.util.concurrent.Executor
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.ScheduledThreadPoolExecutor
-import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 
 data class NettyConfig(val host: String, val port: Int) : ServerConfig {
@@ -48,16 +47,16 @@ data class NettyConfig(val host: String, val port: Int) : ServerConfig {
         override fun start(): Http4kServer = apply {
             val bootstrap = ServerBootstrap()
             bootstrap.group(masterGroup, workerGroup)
-                    .channelFactory(ChannelFactory<ServerChannel> { NioServerSocketChannel() })
-                    .childHandler(object : ChannelInitializer<SocketChannel>() {
-                        public override fun initChannel(ch: SocketChannel) {
-                            ch.pipeline().addLast("codec", HttpServerCodec())
-                            ch.pipeline().addLast("aggregator", HttpObjectAggregator(Int.MAX_VALUE))
-                            ch.pipeline().addLast("handler", Http4kChannelHandler(httpHandler))
-                        }
-                    })
-                    .option(ChannelOption.SO_BACKLOG, 1000)
-                    .childOption(ChannelOption.SO_KEEPALIVE, true)
+                .channelFactory(ChannelFactory<ServerChannel> { NioServerSocketChannel() })
+                .childHandler(object : ChannelInitializer<SocketChannel>() {
+                    public override fun initChannel(ch: SocketChannel) {
+                        ch.pipeline().addLast("codec", HttpServerCodec())
+                        ch.pipeline().addLast("aggregator", HttpObjectAggregator(Int.MAX_VALUE))
+                        ch.pipeline().addLast("handler", Http4kChannelHandler(httpHandler))
+                    }
+                })
+                .option(ChannelOption.SO_BACKLOG, 1000)
+                .childOption(ChannelOption.SO_KEEPALIVE, true)
 
             val channel = bootstrap.bind(host, port).sync().channel()
             address = channel.localAddress() as InetSocketAddress
@@ -74,8 +73,10 @@ data class NettyConfig(val host: String, val port: Int) : ServerConfig {
     }
 }
 
-class TaskStatusController @Inject() constructor(private val taskStatusManager: TaskStatusManager,
-                                                 private val stringCodec: StringCodec) {
+class TaskStatusController @Inject() constructor(
+    private val taskStatusManager: TaskStatusManager,
+    private val stringCodec: StringCodec
+) {
 
     fun getTasksList(user: Intake24User, request: Request): Response {
         val type = request.query("type")
@@ -84,11 +85,11 @@ class TaskStatusController @Inject() constructor(private val taskStatusManager: 
             Response(Status.BAD_REQUEST).body("\"type\" query parameter missing")
         else {
             val responseBody =
-                    stringCodec.encode(taskStatusManager.getTaskList(user.userId, type, OffsetDateTime.now().minusDays(1)))
+                stringCodec.encode(taskStatusManager.getTaskList(user.userId, type, OffsetDateTime.now().minusDays(1)))
 
             Response(Status.OK)
-                    .header("Content-Type", "application/json")
-                    .body(responseBody)
+                .header("Content-Type", "application/json")
+                .body(responseBody)
         }
     }
 
@@ -107,8 +108,8 @@ class TaskStatusController @Inject() constructor(private val taskStatusManager: 
                     Response(Status.NOT_FOUND)
                 else
                     Response(Status.OK)
-                            .header("Content-Type", "application/json")
-                            .body(stringCodec.encode(taskInfo))
+                        .header("Content-Type", "application/json")
+                        .body(stringCodec.encode(taskInfo))
 
             } catch (e: NumberFormatException) {
                 Response(Status.BAD_REQUEST)
@@ -182,18 +183,20 @@ fun main() {
     val config = ConfigFactory.load()
 
     val systemDatabase = DatabaseClient(
-            config.getString("db.system.url"),
-            config.getString("db.system.user"),
-            if (config.hasPath("db.system.password")) config.getString("db.system.password") else null,
-            config.getBoolean("jooq.executeLogging"),
-            SQLDialect.POSTGRES_9_5)
+        config.getString("db.system.url"),
+        config.getString("db.system.user"),
+        if (config.hasPath("db.system.password")) config.getString("db.system.password") else null,
+        config.getBoolean("jooq.executeLogging"),
+        SQLDialect.POSTGRES_9_5
+    )
 
     val foodsDatabase = DatabaseClient(
-            config.getString("db.foods.url"),
-            config.getString("db.foods.user"),
-            if (config.hasPath("db.foods.password")) config.getString("db.foods.password") else null,
-            config.getBoolean("jooq.executeLogging"),
-            SQLDialect.POSTGRES_9_5)
+        config.getString("db.foods.url"),
+        config.getString("db.foods.user"),
+        if (config.hasPath("db.foods.password")) config.getString("db.foods.password") else null,
+        config.getBoolean("jooq.executeLogging"),
+        SQLDialect.POSTGRES_9_5
+    )
 
     val coreModule = object : AbstractModule() {
 
@@ -240,14 +243,14 @@ fun main() {
 
     val routes = injector.getInstance(Routes::class.java)
 
-    val corsPolicy = CorsPolicy(listOf("*"), listOf("X-Auth-Token", "Content-Type"), Method.values().toList())
+    val corsPolicy = CorsPolicy(OriginPolicy.AllowAll(), listOf("X-Auth-Token", "Content-Type"), Method.values().toList())
 
     val app =
-            ServerFilters.Cors(corsPolicy)
-                    .then(unhandledExceptionHandler)
-                    .then(commonExceptionHandler)
-                    .then(DefaultResponseHeaders)
-                    .then(routes.router)
+        ServerFilters.Cors(corsPolicy)
+            .then(unhandledExceptionHandler)
+            .then(commonExceptionHandler)
+            .then(DefaultResponseHeaders)
+            .then(routes.router)
 
     val host = config.getString("http.host")
     val port = config.getInt("http.port")

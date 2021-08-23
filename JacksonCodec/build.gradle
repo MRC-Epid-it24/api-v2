@@ -3,8 +3,8 @@ version = "1.0"
 dependencies {
     api(project(":SerializationAPI"))
 
-    api("com.fasterxml.jackson.core:jackson-core:2.9.9")
-    api("com.fasterxml.jackson.core:jackson-databind:2.9.9")
-    api("com.fasterxml.jackson.module:jackson-module-kotlin:2.9.9")
-    api("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.9.9")
+    api("com.fasterxml.jackson.core:jackson-core:2.12.4")
+    api("com.fasterxml.jackson.core:jackson-databind:2.12.4")
+    api("com.fasterxml.jackson.module:jackson-module-kotlin:2.12.4")
+    api("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.12.4")
 }

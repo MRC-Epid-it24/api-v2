@@ -25,9 +25,9 @@ class MergeLocalesController @Inject constructor(
 
         val form = MultipartFormBody.from(request)
         val file = form.file("file")
-        val baseLocale = form.field("baseLocale")
-        val mergeLocale = form.field("mergeLocale")
-        val destLocale = form.field("destLocale")
+        val baseLocale = form.field("baseLocale")?.value
+        val mergeLocale = form.field("mergeLocale")?.value
+        val destLocale = form.field("destLocale")?.value
 
 
         if (file == null || baseLocale == null || mergeLocale == null || destLocale == null)

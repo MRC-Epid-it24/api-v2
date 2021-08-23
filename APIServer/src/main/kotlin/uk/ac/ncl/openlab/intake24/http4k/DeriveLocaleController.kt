@@ -22,9 +22,9 @@ class DeriveLocaleController @Inject constructor(private val service: DeriveLoca
 
         val form = MultipartFormBody.from(request)
         val file = form.file("file")
-        val sourceLocale = form.field("sourceLocale")
-        val targetLocale = form.field("targetLocale")
-        val format = form.field("format")
+        val sourceLocale = form.field("sourceLocale")?.value
+        val targetLocale = form.field("targetLocale")?.value
+        val format = form.field("format")?.value
 
         if (file == null || sourceLocale == null || targetLocale == null || format == null)
             return errorUtils.errorResponse(Status.BAD_REQUEST, "Missing required field")

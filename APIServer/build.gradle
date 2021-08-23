@@ -5,7 +5,7 @@ plugins {
 }
 
 ext {
-    http4k_version = "3.146.0"
+    http4k_version = "4.11.0.1"
 }
 
 dependencies {
@@ -25,7 +25,7 @@ dependencies {
     implementation("org.http4k:http4k-server-netty:$http4k_version")
 
     implementation("com.auth0:java-jwt:3.8.1")
-    implementation("com.opencsv:opencsv:4.6")
+    implementation("com.opencsv:opencsv:5.5.1")
 
     implementation("org.apache.commons:commons-lang3:3.9")
     implementation("io.arrow-kt:arrow-core:0.8.2")
@@ -111,7 +111,7 @@ application {
 
 shadowJar {
     archiveBaseName = "intake24-api-v2"
-    version = "1.0.0"
+    version = "1.1.0"
 }
 
 compileKotlin.dependsOn generateSystemJooqSchemaSource
