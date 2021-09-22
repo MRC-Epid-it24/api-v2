@@ -13,16 +13,17 @@ import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.NioServerSocketChannel
 import io.netty.handler.codec.http.HttpObjectAggregator
 import io.netty.handler.codec.http.HttpServerCodec
+import io.netty.handler.codec.http.HttpServerKeepAliveHandler
+import io.netty.handler.stream.ChunkedWriteHandler
 import org.http4k.core.*
 import org.http4k.filter.AllowAll
 import org.http4k.filter.CorsPolicy
 import org.http4k.filter.OriginPolicy
 import org.http4k.filter.ServerFilters
 import org.http4k.routing.path
-import org.http4k.server.Http4kChannelHandler
-import org.http4k.server.Http4kServer
-import org.http4k.server.ServerConfig
-import org.http4k.server.asServer
+import org.http4k.server.*
+import org.http4k.sse.SseHandler
+import org.http4k.websocket.WsHandler
 import org.jooq.SQLDialect
 import org.jooq.exception.DataAccessException
 import org.jooq.exception.NoDataFoundException
@@ -36,9 +37,12 @@ import java.time.OffsetDateTime
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
+data class NettyConfig(val host: String, val port: Int) : PolyServerConfig {
+    override fun toServer(http: HttpHandler?, ws: WsHandler?, sse: SseHandler?): Http4kServer = object : Http4kServer {
+        init {
+            if (sse != null) throw UnsupportedOperationException("Netty does not support sse")
+        }
 
-data class NettyConfig(val host: String, val port: Int) : ServerConfig {
-    override fun toServer(httpHandler: HttpHandler): Http4kServer = object : Http4kServer {
         private val masterGroup = NioEventLoopGroup()
         private val workerGroup = NioEventLoopGroup()
         private var closeFuture: ChannelFuture? = null
@@ -51,8 +55,13 @@ data class NettyConfig(val host: String, val port: Int) : ServerConfig {
                 .childHandler(object : ChannelInitializer<SocketChannel>() {
                     public override fun initChannel(ch: SocketChannel) {
                         ch.pipeline().addLast("codec", HttpServerCodec())
+                        ch.pipeline().addLast("keepAlive", HttpServerKeepAliveHandler())
                         ch.pipeline().addLast("aggregator", HttpObjectAggregator(Int.MAX_VALUE))
-                        ch.pipeline().addLast("handler", Http4kChannelHandler(httpHandler))
+
+                        if (ws != null) ch.pipeline().addLast("websocket", WebSocketServerHandler(ws))
+
+                        ch.pipeline().addLast("streamer", ChunkedWriteHandler())
+                        if (http != null) ch.pipeline().addLast("httpHandler", Http4kChannelHandler(http))
                     }
                 })
                 .option(ChannelOption.SO_BACKLOG, 1000)
@@ -69,9 +78,10 @@ data class NettyConfig(val host: String, val port: Int) : ServerConfig {
             masterGroup.shutdownGracefully()
         }
 
-        override fun port(): Int = if (port > 0) 0 else address.port
+        override fun port(): Int = if (port > 0) port else address.port
     }
 }
+
 
 class TaskStatusController @Inject() constructor(
     private val taskStatusManager: TaskStatusManager,
