@@ -40,6 +40,7 @@ class FoodAdminRoutes @Inject() constructor(foodsController: FoodsController,
 
                     "/copy" bind Method.POST to security.allowFoodAdmins(foodsController::copyFoods),
                     "/copy-local" bind Method.POST to security.allowFoodAdmins(foodsController::copyLocalFoods),
+                    "/clone-local"  bind Method.POST to security.allowFoodAdmins(deriveLocaleController::cloneLocalFoods),
                     "/derive-locale" bind Method.POST to security.allowFoodAdmins(deriveLocaleController::deriveLocale),
                     "/merge-locales" bind Method.POST to security.allowFoodAdmins(mergeLocalesController::mergeLocales),
                     "/update-uk-sa-psm" bind Method.POST to security.allowFoodAdmins(uksaUpdatePsmController::updatePortionSizes),

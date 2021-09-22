@@ -9,10 +9,12 @@ import org.slf4j.LoggerFactory
 import uk.ac.ncl.intake24.serialization.StringCodec
 import uk.ac.ncl.openlab.intake24.tools.*
 
-class DeriveLocaleController @Inject constructor(private val service: DeriveLocaleService,
-                                                 private val fctService: FoodCompositionTableService,
-                                                 private val errorUtils: ErrorUtils,
-                                                 private val stringCodec: StringCodec) {
+class DeriveLocaleController @Inject constructor(
+    private val service: DeriveLocaleService,
+    private val fctService: FoodCompositionTableService,
+    private val errorUtils: ErrorUtils,
+    private val stringCodec: StringCodec
+) {
 
     private val logger = LoggerFactory.getLogger(DeriveLocaleController::class.java)
 
@@ -66,7 +68,19 @@ class DeriveLocaleController @Inject constructor(private val service: DeriveLoca
                 return errorUtils.errorResponse(Status.BAD_REQUEST, e)
             }
         }
-
     }
 
+    fun cloneLocalFoods(user: Intake24User, request: Request): Response {
+        val form = MultipartFormBody.from(request)
+        val sourceLocale = form.field("sourceLocale")?.value
+        val targetLocale = form.field("targetLocale")?.value
+
+        if (sourceLocale == null || targetLocale == null)
+            return errorUtils.errorResponse(Status.BAD_REQUEST, "Missing required field")
+        else {
+            service.cloneLocalFoods(sourceLocale, targetLocale)
+            return Response(Status.OK)
+        }
+
+    }
 }

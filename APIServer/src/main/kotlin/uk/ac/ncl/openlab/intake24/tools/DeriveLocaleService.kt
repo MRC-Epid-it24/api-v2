@@ -7,17 +7,18 @@ import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.services.*
 import uk.ac.ncl.openlab.intake24.services.LocalesService.Companion.getLocale
-import java.lang.RuntimeException
 import java.time.Year
 import java.util.regex.Pattern
 
 data class DeriveLocaleException(val errors: List<String>) : RuntimeException()
 
 @Singleton
-class DeriveLocaleService @Inject() constructor(@Named("foods") private val foodDatabase: DatabaseClient,
-                                                private val localesService: LocalesService,
-                                                private val foodsService: FoodsServiceV2,
-                                                private val psmService: PortionSizeMethodsService) {
+class DeriveLocaleService @Inject() constructor(
+    @Named("foods") private val foodDatabase: DatabaseClient,
+    private val localesService: LocalesService,
+    private val foodsService: FoodsServiceV2,
+    private val psmService: PortionSizeMethodsService
+) {
 
     private val logger = LoggerFactory.getLogger(DeriveLocaleService::class.java)
 
@@ -25,10 +26,10 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
         val yearDigits = (Year.now().value % 100).toString()
 
         return (yearDigits + englishDescription.filter { it.isLetterOrDigit() || it.isWhitespace() }
-                .split(Pattern.compile("\\s+"))
-                .joinToString("") { it.take(2).toUpperCase() })
-                .take(8)
-                .padEnd(4, 'X')
+            .split(Pattern.compile("\\s+"))
+            .joinToString("") { it.take(2).toUpperCase() })
+            .take(8)
+            .padEnd(4, 'X')
     }
 
     private fun deduplicateCode(code: String): String {
@@ -67,7 +68,11 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
         }
     }
 
-    private fun ensureUniqueSubstitutions(substitutions: List<Pair<String, String>>, duplicateCodes: Set<String>, usedCodes: Set<String>): List<Pair<String, String>> {
+    private fun ensureUniqueSubstitutions(
+        substitutions: List<Pair<String, String>>,
+        duplicateCodes: Set<String>,
+        usedCodes: Set<String>
+    ): List<Pair<String, String>> {
         val used = substitutions.map { it.second }.toMutableSet()
         used.addAll(usedCodes)
 
@@ -123,8 +128,10 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
         return code
     }
 
-    private fun validatePortionSizeMethods(methods: List<PortionSizeMethod>, asServedIds: Set<String>, guideIds: Set<String>,
-                                           drinkwareIds: Set<String>): List<String> {
+    private fun validatePortionSizeMethods(
+        methods: List<PortionSizeMethod>, asServedIds: Set<String>, guideIds: Set<String>,
+        drinkwareIds: Set<String>
+    ): List<String> {
         val cerealTypes = setOf("flake", "hoop", "rkris")
 
         return methods.mapNotNull { method ->
@@ -193,7 +200,7 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
 
         actions.filterIsInstance<FoodAction.New>().forEach { newFood ->
 
-           psmIssues.addAll(validatePortionSizeMethods(newFood.portionSizeMethods, asServedIds, guideIds, drinkwareIds).map {
+            psmIssues.addAll(validatePortionSizeMethods(newFood.portionSizeMethods, asServedIds, guideIds, drinkwareIds).map {
                 "In row ${newFood.sourceRow}, \"${newFood.descriptions.first().englishDescription}\": " + it
             })
 
@@ -202,12 +209,18 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
 
                 val nutrientTableCodes = if (newFood.fctCode != null) listOf(newFood.fctCode) else emptyList()
 
-                val attributes = InheritableAttributes(null, null, null,
-                        if (newFood.recipesOnly) FoodsServiceV2.USE_AS_RECIPE_INGREDIENT else FoodsServiceV2.USE_AS_REGULAR_FOOD)
+                val attributes = InheritableAttributes(
+                    null, null, null,
+                    if (newFood.recipesOnly) FoodsServiceV2.USE_AS_RECIPE_INGREDIENT else FoodsServiceV2.USE_AS_REGULAR_FOOD
+                )
 
                 newFoods.add(NewFoodV2(code, it.englishDescription, 1, attributes, newFood.categories))
-                newLocalFoods.add(NewLocalFoodV2(code, it.localDescription, nutrientTableCodes, addAsServedLeftovers(newFood.portionSizeMethods, asServedIds),
-                        emptyList(), emptyList()))
+                newLocalFoods.add(
+                    NewLocalFoodV2(
+                        code, it.localDescription, nutrientTableCodes, addAsServedLeftovers(newFood.portionSizeMethods, asServedIds),
+                        emptyList(), emptyList()
+                    )
+                )
                 foodCodesToInclude.add(code)
             }
         }
@@ -220,8 +233,12 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
             val nutrientTableCodes = if (includeFood.localFctCode != null) listOf(includeFood.localFctCode) else emptyList()
 
             if (destLocale.prototypeLocale == sourceLocaleId) {
-                newLocalFoods.add(NewLocalFoodV2(includeFood.foodCode, includeFood.localDescription,
-                        nutrientTableCodes, emptyList(), emptyList(), emptyList()))
+                newLocalFoods.add(
+                    NewLocalFoodV2(
+                        includeFood.foodCode, includeFood.localDescription,
+                        nutrientTableCodes, emptyList(), emptyList(), emptyList()
+                    )
+                )
             } else {
                 localCopies.add(CopyLocalV2(includeFood.foodCode, includeFood.foodCode, includeFood.localDescription, nutrientTableCodes))
             }
@@ -262,6 +279,23 @@ class DeriveLocaleService @Inject() constructor(@Named("foods") private val food
             foodsService.copyLocalFoods(sourceLocaleId, destLocaleId, localCopies, it)
             foodsService.copyCategories(sourceLocaleId, destLocaleId, it)
             foodsService.addFoodsToLocale(foodCodesToInclude, destLocaleId, it)
+        }
+    }
+
+    fun cloneLocalFoods(sourceLocaleId: String, destLocaleId: String) {
+        foodDatabase.runTransaction {
+            getLocale(destLocaleId, it) ?: throw IllegalArgumentException("Locale $destLocaleId does not exist")
+
+            // FIXME: iterate batches instead of hard coded limit
+            val copyCommands = foodsService.getLocalFoodsList(sourceLocaleId, 0, 10000, it).map {
+                CopyLocalV2(it.code, it.code, it.localDescription ?: it.englishDescription, emptyList())
+            }
+
+            logger.debug("Cloning ${copyCommands.size} foods")
+
+            foodsService.copyLocalFoods(sourceLocaleId, destLocaleId, copyCommands, it)
+            foodsService.addFoodsToLocale(copyCommands.map { it.sourceCode }, destLocaleId, it)
+            foodsService.copyCategories(sourceLocaleId, destLocaleId, it)
         }
     }
 }
