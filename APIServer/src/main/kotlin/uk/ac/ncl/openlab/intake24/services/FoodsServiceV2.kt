@@ -174,6 +174,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                 )
                     .from(FOODS_PORTION_SIZE_METHODS)
                     .where(FOODS_PORTION_SIZE_METHODS.FOOD_CODE.`in`(foodCodes).and(FOODS_PORTION_SIZE_METHODS.LOCALE_ID.eq(localeId)))
+                    .orderBy(FOODS_PORTION_SIZE_METHODS.ID)
                     .fetchArray()
 
                 val ids = portionSizeMethodRows.map { it[FOODS_PORTION_SIZE_METHODS.ID] }
@@ -185,6 +186,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                 )
                     .from(FOODS_PORTION_SIZE_METHOD_PARAMS)
                     .where(FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID.`in`(ids))
+                    .orderBy(FOODS_PORTION_SIZE_METHOD_PARAMS.ID)
                     .fold(emptyMap<Int, List<PortionSizeMethodParameter>>()) { map, row ->
                         val id = row[FOODS_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID]
                         val list = map[id] ?: emptyList()
@@ -239,6 +241,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                     .where(
                         CATEGORIES_PORTION_SIZE_METHODS.CATEGORY_CODE.`in`(categoryCodes).and(CATEGORIES_PORTION_SIZE_METHODS.LOCALE_ID.eq(localeId))
                     )
+                    .orderBy(CATEGORIES_PORTION_SIZE_METHODS.ID)
                     .fetchArray()
 
                 val ids = portionSizeMethodRows.map { it[CATEGORIES_PORTION_SIZE_METHODS.ID] }
@@ -250,6 +253,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                 )
                     .from(CATEGORIES_PORTION_SIZE_METHOD_PARAMS)
                     .where(CATEGORIES_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID.`in`(ids))
+                    .orderBy(CATEGORIES_PORTION_SIZE_METHOD_PARAMS.ID)
                     .fold(emptyMap<Int, List<PortionSizeMethodParameter>>()) { map, row ->
                         val id = row[CATEGORIES_PORTION_SIZE_METHOD_PARAMS.PORTION_SIZE_METHOD_ID]
                         val list = map[id] ?: emptyList()
@@ -478,6 +482,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                 return context.select(BRANDS.FOOD_CODE, BRANDS.NAME)
                     .from(BRANDS)
                     .where(BRANDS.FOOD_CODE.`in`(foodCodes).and(BRANDS.LOCALE_ID.eq(localeId)))
+                    .orderBy(BRANDS.ID)
                     .fetchArray()
                     .fold(empty) { map, row ->
                         val code = row[BRANDS.FOOD_CODE]
@@ -537,6 +542,7 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                 )
                     .from(ASSOCIATED_FOODS)
                     .where(ASSOCIATED_FOODS.FOOD_CODE.`in`(foodCodes).and(ASSOCIATED_FOODS.LOCALE_ID.eq(localeId)))
+                    .orderBy(ASSOCIATED_FOODS.ID)
                     .fetchArray()
                     .fold(empty) { map, row ->
                         val code = row[ASSOCIATED_FOODS.FOOD_CODE]
