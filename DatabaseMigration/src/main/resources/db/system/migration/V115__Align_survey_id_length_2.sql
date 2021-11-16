@@ -1,0 +1,1 @@
+ALTER TABLE user_survey_aliases ALTER COLUMN survey_id TYPE varchar(64);
