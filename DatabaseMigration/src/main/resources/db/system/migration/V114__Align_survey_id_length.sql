@@ -1,0 +1,1 @@
+ALTER TABLE gen_user_counters ALTER COLUMN survey_id TYPE varchar(64);
