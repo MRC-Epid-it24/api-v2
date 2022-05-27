@@ -22,15 +22,17 @@ import java.time.OffsetDateTime
 import java.util.concurrent.ScheduledThreadPoolExecutor
 
 @Singleton
-class NutrientMappingExportService @Inject() constructor(@Named("foods") val foodDatabase: DatabaseClient,
-                                                         @Named("system") val systemDatabase: DatabaseClient,
-                                                         private val localesService: LocalesService,
-                                                         private val fctService: FoodCompositionTableService,
-                                                         private val foodsService: FoodsServiceV2,
-                                                         private val secureURLService: SecureURLService,
-                                                         private val config: Config,
-                                                         private val taskStatusManager: TaskStatusManager,
-                                                         private val threadPool: ScheduledThreadPoolExecutor) {
+class NutrientMappingExportService @Inject() constructor(
+    @Named("foods") val foodDatabase: DatabaseClient,
+    @Named("system") val systemDatabase: DatabaseClient,
+    private val localesService: LocalesService,
+    private val fctService: FoodCompositionTableService,
+    private val foodsService: FoodsServiceV2,
+    private val secureURLService: SecureURLService,
+    private val config: Config,
+    private val taskStatusManager: TaskStatusManager,
+    private val threadPool: ScheduledThreadPoolExecutor
+) {
 
     companion object {
         const val TASK_TYPE = "export-nutrients-mapping"
@@ -40,15 +42,21 @@ class NutrientMappingExportService @Inject() constructor(@Named("foods") val foo
 
     private val foodBatchSize: Int = config.getInt("services.nutrientMapping.recalculateBatchSize")
 
-    private data class FoodNutrientsRow(val code: String, val englishDescription: String, val localDescription: String?,
-                                        val referenceLocaleId: String?, val fctReference: FoodCompositionTableReference?,
-                                        val nutrients: Map<Int, Double>)
+    private data class FoodNutrientsRow(
+        val code: String, val englishDescription: String, val localDescription: String?,
+        val referenceLocaleId: String?, val fctReference: FoodCompositionTableReference?,
+        val fields: Map<String, String>,
+        val nutrients: Map<Int, Double>
+    )
 
     private data class LocalNutrientType(val id: Int, val description: String, val unitSymbol: String)
 
+    private data class LocalField(val description: String, val fieldName: String)
 
-    private fun resolveFoodCompositionTableReferences(foodCodes: List<String>, localeId: String, prototypeLocaleId: String?,
-                                                      context: DSLContext): Map<String, Pair<String, FoodCompositionTableReference>> {
+    private fun resolveFoodCompositionTableReferences(
+        foodCodes: List<String>, localeId: String, prototypeLocaleId: String?,
+        context: DSLContext
+    ): Map<String, Pair<String, FoodCompositionTableReference>> {
         val localeTableCodes = FoodsServiceV2.getNutrientTableCodes(foodCodes, localeId, context);
         val prototypeTableCodes = if (prototypeLocaleId != null) {
             FoodsServiceV2.getNutrientTableCodes(foodCodes, prototypeLocaleId, context)
@@ -96,14 +104,22 @@ class NutrientMappingExportService @Inject() constructor(@Named("foods") val foo
 
                 val nutrientMap = fctService.getNutrients(referenceSet, context)
 
+                val fieldsMap = fctService.getFields(referenceSet, context)
+
                 nextBatch.map { food ->
 
                     val ref = foodCompositionTableReferences[food.code]
 
                     val nutrients = ref?.let { nutrientMap[it.second] }
 
-                    FoodNutrientsRow(food.code, food.englishDescription, food.localDescription, ref?.first,
-                            ref?.second, nutrients?.toMap() ?: emptyMap())
+                    val fields = ref?.let { fieldsMap[it.second] }
+
+                    FoodNutrientsRow(
+                        food.code, food.englishDescription, food.localDescription, ref?.first,
+                        ref?.second,
+                        fields?.toMap() ?: emptyMap(),
+                        nutrients?.toMap() ?: emptyMap()
+                    )
                 }
 
             } else
@@ -111,9 +127,12 @@ class NutrientMappingExportService @Inject() constructor(@Named("foods") val foo
         }
     }
 
-    private fun exportFoodNutrientMappingImpl(localeId: String, prototypeLocaleId: String?,
-                                              localNutrientTypes: List<LocalNutrientType>,
-                                              writer: CSVWriter, currentOffset: Int) {
+    private fun exportFoodNutrientMappingImpl(
+        localeId: String, prototypeLocaleId: String?,
+        localFields: List<LocalField>,
+        localNutrientTypes: List<LocalNutrientType>,
+        writer: CSVWriter, currentOffset: Int
+    ) {
 
         val nextBatch = getNextBatch(localeId, prototypeLocaleId, currentOffset)
         logger.debug("Fetched next food batch at offset $currentOffset with limit $foodBatchSize, actual batch size ${nextBatch.size}")
@@ -121,12 +140,16 @@ class NutrientMappingExportService @Inject() constructor(@Named("foods") val foo
         if (nextBatch.isNotEmpty()) {
             nextBatch.forEach { row ->
                 writer.writeNext(
-                        arrayOf(row.code, row.englishDescription, row.localDescription ?: "N/A", row.referenceLocaleId
-                                ?: "N/A", row.fctReference?.tableId ?: "N/A", row.fctReference?.recordId ?: "N/A")
-                                .plus(localNutrientTypes.map { row.nutrients[it.id]?.toString() ?: "N/A" }))
+                    arrayOf(
+                        row.code, row.englishDescription, row.localDescription ?: "N/A", row.referenceLocaleId
+                            ?: "N/A", row.fctReference?.tableId ?: "N/A", row.fctReference?.recordId ?: "N/A"
+                    )
+                        .plus(localFields.map { row.fields[it.fieldName] ?: "N/A" })
+                        .plus(localNutrientTypes.map { row.nutrients[it.id]?.toString() ?: "N/A" })
+                )
             }
 
-            exportFoodNutrientMappingImpl(localeId, prototypeLocaleId, localNutrientTypes, writer, currentOffset + nextBatch.size)
+            exportFoodNutrientMappingImpl(localeId, prototypeLocaleId, localFields, localNutrientTypes, writer, currentOffset + nextBatch.size)
         } else
             logger.debug("Export complete.")
     }
@@ -135,13 +158,26 @@ class NutrientMappingExportService @Inject() constructor(@Named("foods") val foo
         return systemDatabase.runTransaction { context ->
 
             context.select(LOCAL_NUTRIENT_TYPES.NUTRIENT_TYPE_ID, NUTRIENT_TYPES.DESCRIPTION, NUTRIENT_UNITS.SYMBOL)
-                    .from(LOCAL_NUTRIENT_TYPES
-                            .join(NUTRIENT_TYPES).on(LOCAL_NUTRIENT_TYPES.NUTRIENT_TYPE_ID.eq(NUTRIENT_TYPES.ID))
-                            .join(NUTRIENT_UNITS).on(NUTRIENT_TYPES.UNIT_ID.eq(NUTRIENT_UNITS.ID)))
-                    .where(LOCAL_NUTRIENT_TYPES.LOCALE_ID.eq(localeId))
-                    .orderBy(LOCAL_NUTRIENT_TYPES.NUTRIENT_TYPE_ID)
-                    .fetch { LocalNutrientType(it.value1(), it.value2(), it.value3()) }
+                .from(
+                    LOCAL_NUTRIENT_TYPES
+                        .join(NUTRIENT_TYPES).on(LOCAL_NUTRIENT_TYPES.NUTRIENT_TYPE_ID.eq(NUTRIENT_TYPES.ID))
+                        .join(NUTRIENT_UNITS).on(NUTRIENT_TYPES.UNIT_ID.eq(NUTRIENT_UNITS.ID))
+                )
+                .where(LOCAL_NUTRIENT_TYPES.LOCALE_ID.eq(localeId))
+                .orderBy(LOCAL_NUTRIENT_TYPES.NUTRIENT_TYPE_ID)
+                .fetch { LocalNutrientType(it.value1(), it.value2(), it.value3()) }
 
+        }
+    }
+
+    private fun getLocalFields(localeId: String): List<LocalField> {
+        return systemDatabase.runTransaction { context ->
+
+            context.select(LOCAL_FIELDS.ID, LOCAL_FIELDS.DESCRIPTION, LOCAL_FIELDS.FIELD_NAME)
+                .from(LOCAL_FIELDS)
+                .where(LOCAL_FIELDS.LOCALE_ID.eq(localeId))
+                .orderBy(LOCAL_FIELDS.ID)
+                .fetch { LocalField(it.value2(), it.value3()) }
         }
     }
 
@@ -159,25 +195,28 @@ class NutrientMappingExportService @Inject() constructor(@Named("foods") val foo
 
                 val prototypeLocale = localesService.getLocale(localeId)?.prototypeLocale
                 val localNutrients = getLocalNutrientTypes(localeId)
+                val localFields = getLocalFields(localeId)
 
-                logger.debug("Local nutrients count: ${localNutrients.size}")
+                logger.debug("Local nutrients count: ${localNutrients.size}, local fields count: ${localFields.size}")
 
                 if (insertBOM) {
                     writer.append('\ufeff')
                 }
 
                 val header = arrayOf("Intake24 food code", "English description", "Local description", "Source locale", "FCT", "FCT record ID")
-                        .plus(localNutrients.map { "${it.description} (${it.unitSymbol})" })
+                    .plus(localFields.map { "${it.description}" })
+                    .plus(localNutrients.map { "${it.description} (${it.unitSymbol})" })
 
                 csvWriter.writeNext(header);
 
-                exportFoodNutrientMappingImpl(localeId, prototypeLocale, localNutrients, csvWriter, 0)
+                exportFoodNutrientMappingImpl(localeId, prototypeLocale, localFields, localNutrients, csvWriter, 0)
 
                 writer.close()
 
                 val date = LocalDate.now()
 
-                val url = secureURLService.createURL("intake24-nutrient-mapping-$localeId-${date.dayOfMonth}-${date.monthValue}-${date.year}.csv", file)
+                val url =
+                    secureURLService.createURL("intake24-nutrient-mapping-$localeId-${date.dayOfMonth}-${date.monthValue}-${date.year}.csv", file)
 
                 taskStatusManager.setSuccessful(id, Download(url.toString(), OffsetDateTime.now().plusHours(2)))
             } catch (e: Exception) {
