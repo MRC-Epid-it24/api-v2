@@ -45,5 +45,6 @@ class FoodAdminRoutes @Inject() constructor(foodsController: FoodsController,
                     "/merge-locales" bind Method.POST to security.allowFoodAdmins(mergeLocalesController::mergeLocales),
                     "/update-uk-sa-psm" bind Method.POST to security.allowFoodAdmins(uksaUpdatePsmController::updatePortionSizes),
                     "/frequencies" bind Method.POST to security.allowFoodAdmins(foodFrequencyStatsController::exportFrequencies),
-                    "/{localeId}/export-mapping" bind Method.POST to security.check(::canReadLocalFoods, nutrientMappingController::exportMapping))
+                    "/{localeId}/export-mapping" bind Method.POST to security.check(::canReadLocalFoods, nutrientMappingController::exportMapping),
+                "/copy-category-psm" bind Method.POST to security.allowFoodAdmins(foodsController::copyCategoryPortionSizeMethods))
 }

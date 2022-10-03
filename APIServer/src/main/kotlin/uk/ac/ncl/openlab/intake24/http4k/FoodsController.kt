@@ -15,9 +15,11 @@ data class CopyFoodsV2Request(val foods: List<CopyFoodV2>)
 
 data class CopyLocalFoodsV2Request(val sourceLocale: String, val destLocale: String, val foods: List<CopyLocalV2>)
 
-class FoodsController @Inject constructor(private val service: FoodsServiceV2,
-                                          private val stringCodec: StringCodec,
-                                          private val errorUtils: ErrorUtils) {
+class FoodsController @Inject constructor(
+    private val service: FoodsServiceV2,
+    private val stringCodec: StringCodec,
+    private val errorUtils: ErrorUtils
+) {
 
 
     private fun validateLocaleId(request: Request, onValid: (String) -> Response): Response {
@@ -39,7 +41,17 @@ class FoodsController @Inject constructor(private val service: FoodsServiceV2,
         val request = stringCodec.decode(request.bodyString(), CopyLocalFoodsV2Request::class)
         service.copyLocalFoods(request.sourceLocale, request.destLocale, request.foods)
         return Response(Status.OK)
+    }
 
+    fun copyCategoryPortionSizeMethods(user: Intake24User, request: Request): Response {
+        val srcLocaleId = request.query("src")
+        val destLocaleId = request.query("dst")
+
+        if (srcLocaleId == null || destLocaleId == null)
+            return Response(Status.BAD_REQUEST)
+
+        service.copyCategoryPortionSizeMethods(srcLocaleId, destLocaleId)
+        return Response(Status.OK)
     }
 
     fun getRootCategories(user: Intake24User, request: Request): Response {

@@ -3,16 +3,14 @@ package uk.ac.ncl.openlab.intake24.services
 import com.google.inject.Inject
 import com.google.inject.Singleton
 import com.google.inject.name.Named
-
 import org.apache.commons.lang3.StringUtils
 import org.jooq.DSLContext
 import org.jooq.impl.DSL.*
-import org.jooq.impl.SQLDataType
 import org.slf4j.LoggerFactory
 import uk.ac.ncl.openlab.intake24.dbutils.DatabaseClient
 import uk.ac.ncl.openlab.intake24.foodsql.Routines
-import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableReference
 import uk.ac.ncl.openlab.intake24.foodsql.Tables.*
+import uk.ac.ncl.openlab.intake24.tools.FoodCompositionTableReference
 import java.util.*
 
 
@@ -1037,6 +1035,14 @@ class FoodsServiceV2 @Inject() constructor(@Named("foods") private val foodDatab
                 }
 
             CategoryContents(foodHeaders, categoryHeaders)
+        }
+    }
+
+    fun copyCategoryPortionSizeMethods(sourceLocale: String, destLocale: String) {
+        foodDatabase.runTransaction {
+            validateLocaleId(sourceLocale, it)
+            validateLocaleId(destLocale, it)
+            copyCategoryPortionSizeMethods(sourceLocale, destLocale, it)
         }
     }
 

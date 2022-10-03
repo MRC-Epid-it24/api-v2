@@ -278,6 +278,7 @@ class DeriveLocaleService @Inject() constructor(
             foodsService.createLocalFoods(newLocalFoods, destLocaleId, it)
             foodsService.copyLocalFoods(sourceLocaleId, destLocaleId, localCopies, it)
             foodsService.copyCategories(sourceLocaleId, destLocaleId, it)
+            foodsService.copyCategoryPortionSizeMethods(sourceLocaleId, destLocaleId, it)
             foodsService.addFoodsToLocale(foodCodesToInclude, destLocaleId, it)
         }
     }
@@ -296,6 +297,7 @@ class DeriveLocaleService @Inject() constructor(
             foodsService.copyLocalFoods(sourceLocaleId, destLocaleId, copyCommands, it)
             foodsService.addFoodsToLocale(copyCommands.map { it.sourceCode }, destLocaleId, it)
             foodsService.copyCategories(sourceLocaleId, destLocaleId, it)
+            foodsService.copyCategoryPortionSizeMethods(sourceLocaleId, destLocaleId, it)
         }
     }
 }
