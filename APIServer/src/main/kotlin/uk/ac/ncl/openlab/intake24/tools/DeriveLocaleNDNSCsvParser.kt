@@ -18,11 +18,10 @@ data class FoodDescription(val englishDescription: String, val localDescription:
 sealed class FoodAction {
     data class Include(val foodCode: String, val localDescription: String, val copies: List<FoodDescription>, val localFctCode: FoodCompositionTableReference?) : FoodAction()
     data class New(val sourceRow: Int, val descriptions: List<FoodDescription>, val categories: List<String>, val fctCode: FoodCompositionTableReference, val recipesOnly: Boolean, val portionSizeMethods: List<PortionSizeMethod>) : FoodAction()
+    data class Clone(val sourceFoodCode: String, val description: FoodDescription, val fctReference: FoodCompositionTableReference?): FoodAction()
     object NoAction : FoodAction()
 }
-
 class DeriveLocaleParseException(message: String) : RuntimeException(message)
-
 
 object DeriveLocaleNDNSCsvParser {
 

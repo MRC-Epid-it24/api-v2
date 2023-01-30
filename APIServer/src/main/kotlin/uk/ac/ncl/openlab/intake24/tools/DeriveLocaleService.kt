@@ -140,19 +140,23 @@ class DeriveLocaleService @Inject() constructor(
                     val id = method.parameters.find { it.name == "serving-image-set" }!!.value
                     if (!asServedIds.contains(id)) "As served set \"$id\" does not exist" else null
                 }
+
                 "guide-image" -> {
                     val id = method.parameters.find { it.name == "guide-image-id" }!!.value
                     if (!guideIds.contains(id)) "Guide image \"$id\" does not exist" else null
                 }
+
                 "drink-scale" -> {
                     val id = method.parameters.find { it.name == "drinkware-id" }!!.value
                     if (!drinkwareIds.contains(id)) "Drink scale \"$id\" does not exist" else null
                 }
+
                 "cereal" -> {
                     val type = method.parameters.find { it.name == "type" }!!.value
 
                     if (cerealTypes.contains(type)) null else "Cereal type \"$type\" does not exist"
                 }
+
                 else -> null
             }
         }
@@ -172,6 +176,7 @@ class DeriveLocaleService @Inject() constructor(
                     else
                         method.copy(parameters = method.parameters + PortionSizeMethodParameter("leftovers-image-set", leftoversCandidate))
                 }
+
                 else -> method
             }
         }
@@ -252,6 +257,19 @@ class DeriveLocaleService @Inject() constructor(
                 localCopies.add(CopyLocalV2(includeFood.foodCode, copyCode, it.localDescription, nutrientTableCodes))
                 foodCodesToInclude.add(copyCode)
             }
+        }
+
+        actions.filterIsInstance<FoodAction.Clone>().forEach { cloneFood ->
+            val clonedCode = makeUniqueCodeAndRemember(cloneFood.description.englishDescription, newCodes)
+
+            foodCopies.add(CopyFoodV2(cloneFood.sourceFoodCode, clonedCode, cloneFood.description.localDescription))
+            localCopies.add(
+                CopyLocalV2(
+                    cloneFood.sourceFoodCode, clonedCode, cloneFood.description.localDescription,
+                    if (cloneFood.fctReference != null) listOf(cloneFood.fctReference) else emptyList()
+                )
+            )
+            foodCodesToInclude.add(clonedCode)
         }
 
         val codeSubstitutions = ensureUniqueInDatabase(newFoods.map { it.code }.toSet() + foodCopies.map { it.newCode }.toSet())

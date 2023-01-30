@@ -37,6 +37,7 @@ class DeriveLocaleController @Inject constructor(
                 val (errors, actions) = when (format) {
                     "ndns1" -> DeriveLocaleNDNSCsvParser.parseTable(file.content)
                     "sab1" -> DeriveLocaleSABCsvParser.parseTable(file.content)
+                    "nz1" -> DeriveLocaleNZCsvParser.parseTable(file.content)
                     else -> throw DeriveLocaleParseException("Unexpected format value: $format")
                 }
 
@@ -44,6 +45,7 @@ class DeriveLocaleController @Inject constructor(
                     when (it) {
                         is FoodAction.Include -> it.localFctCode
                         is FoodAction.New -> it.fctCode
+                        is FoodAction.Clone -> it.fctReference
                         is FoodAction.NoAction -> null
                     }
                 }
