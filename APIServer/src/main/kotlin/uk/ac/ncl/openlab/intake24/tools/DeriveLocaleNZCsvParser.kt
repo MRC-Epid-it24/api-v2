@@ -5,6 +5,7 @@ import arrow.core.Left
 import arrow.core.Right
 import arrow.core.flatMap
 import com.opencsv.CSVReader
+import uk.ac.ncl.openlab.intake24.services.PortionSizeMethod
 import uk.ac.ncl.openlab.intake24.tools.csvutils.SafeRowReader
 import uk.ac.ncl.openlab.intake24.tools.csvutils.excelColumnToOffset
 import java.io.InputStream
@@ -36,6 +37,7 @@ object DeriveLocaleNZCsvParser {
     private val REVISED_LOCAL_DESC = Pair(excelColumnToOffset("Y"), "Revised local description")
     private val ACTION = Pair(excelColumnToOffset("Z"), "Action")
     private val SOURCE_FOOD_CODE = Pair(excelColumnToOffset("AA"), "Reference food")
+    private val CLONE_AS_MHDK = Pair(excelColumnToOffset("AB"), "Use as milk in hot drink")
 
     private val CATEGORIES_START_INDEX = excelColumnToOffset("M")
     private val CATEGORIES_COLUMN_COUNT = 12
@@ -59,7 +61,16 @@ object DeriveLocaleNZCsvParser {
         }
     }
 
-    private fun parseRow(rowIndex: Int, row: Array<String>): Either<String, FoodAction> {
+    private fun cloneMHDK(sourceRowIndex: Int, localDescription: String, fctReference: FoodCompositionTableReference): FoodAction.New {
+        return FoodAction.New(
+            sourceRowIndex, listOf(FoodDescription(localDescription, localDescription)), listOf("MHDK"),
+            fctReference, false, listOf(
+                PortionSizeMethod("milk-in-a-hot-drink", "in_a_mug", "portion/mugs.jpg", false, 1.0, emptyList())
+            )
+        )
+    }
+
+    private fun parseRow(rowIndex: Int, row: Array<String>): Either<String, List<FoodAction>> {
 
         val sourceRowIndex = rowIndex + ROW_OFFSET
 
@@ -75,40 +86,80 @@ object DeriveLocaleNZCsvParser {
         return row.getColumn(ACTION)
             .flatMap { parseAction(it) }
             .flatMap { action ->
+                row.getOptionalColumn(CLONE_AS_MHDK).flatMap { cloneAsMhdk ->
+                    when (action) {
+                        NZRowAction.New ->
+                            row.getColumn(LOCAL_DESC).flatMap { localDescription ->
+                                row.getColumn(SOURCE_FOOD_CODE).flatMap { sourceFoodCode ->
+                                    row.getOptionalColumn(FOOD_COMPOSITION_TABLE).flatMap { fctId ->
+                                        row.getOptionalColumn(FOOD_COMPOSITION_CODE).flatMap { fctCode ->
 
-                when (action) {
-                    NZRowAction.New ->
-                        row.getColumn(LOCAL_DESC).flatMap { localDescription ->
-                            row.getColumn(SOURCE_FOOD_CODE).flatMap { sourceFoodCode ->
-                                row.getOptionalColumn(FOOD_COMPOSITION_TABLE).flatMap { fctId ->
-                                    row.getOptionalColumn(FOOD_COMPOSITION_CODE).map { fctCode ->
-                                        val fctReference =
-                                            if (fctId != null && fctCode !== null) FoodCompositionTableReference(fctId, fctCode) else null
-                                        FoodAction.Clone(sourceFoodCode, FoodDescription(localDescription, localDescription), fctReference)
+                                            val fctReference =
+                                                if (fctId != null && fctCode != null) FoodCompositionTableReference(fctId, fctCode) else null
+
+                                            val cloneAction = FoodAction.Clone(
+                                                sourceFoodCode, FoodDescription(localDescription, localDescription), fctReference
+                                            )
+
+                                            if (cloneAsMhdk == null)
+                                                Right(listOf(cloneAction))
+                                            else {
+                                                if (fctReference == null)
+                                                    Left("Food composition table reference required for milk in hot drink records")
+                                                else
+                                                    Right(listOf(cloneAction, cloneMHDK(sourceRowIndex, localDescription, fctReference)))
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                    NZRowAction.Retain ->
-                        row.getColumn(FOOD_CODE).flatMap { foodCode ->
-                            row.getColumn(LOCAL_DESC).map { localDescription ->
-                                FoodAction.Include(foodCode, localDescription, emptyList(), null)
-                            }
-                        }
+                        NZRowAction.Retain ->
+                            row.getColumn(FOOD_CODE).flatMap { foodCode ->
+                                row.getColumn(LOCAL_DESC).flatMap { localDescription ->
+                                    row.getOptionalColumn(FOOD_COMPOSITION_TABLE).flatMap { fctId ->
+                                        row.getOptionalColumn(FOOD_COMPOSITION_CODE).flatMap { fctCode ->
 
-                    NZRowAction.Revise ->
-                        row.getColumn(FOOD_CODE).flatMap { foodCode ->
-                            row.getColumn(REVISED_LOCAL_DESC).flatMap { localDescription ->
-                                row.getColumn(FOOD_COMPOSITION_TABLE).flatMap { fctId ->
-                                    row.getColumn(FOOD_COMPOSITION_CODE).map { fctCode ->
-                                        FoodAction.Include(foodCode, localDescription, emptyList(), FoodCompositionTableReference(fctId, fctCode))
+                                            val fctReference =
+                                                if (fctId != null && fctCode != null) FoodCompositionTableReference(fctId, fctCode) else null
+
+                                            val includeAction = FoodAction.Include(foodCode, localDescription, emptyList(), fctReference)
+
+                                            if (cloneAsMhdk == null)
+                                                Right(listOf(includeAction))
+                                            else {
+                                                if (fctReference == null)
+                                                    Left("Food composition table reference required for milk in hot drink records")
+                                                else
+                                                    Right(listOf(includeAction, cloneMHDK(sourceRowIndex, localDescription, fctReference)))
+
+                                            }
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                    NZRowAction.Exclude -> Right(FoodAction.NoAction)
+                        NZRowAction.Revise ->
+                            row.getColumn(FOOD_CODE).flatMap { foodCode ->
+                                row.getColumn(REVISED_LOCAL_DESC).flatMap { localDescription ->
+                                    row.getColumn(FOOD_COMPOSITION_TABLE).flatMap { fctId ->
+                                        row.getColumn(FOOD_COMPOSITION_CODE).flatMap { fctCode ->
+
+                                            val fctReference = FoodCompositionTableReference(fctId, fctCode)
+
+                                            val includeAction = FoodAction.Include(foodCode, localDescription, emptyList(), fctReference)
+
+                                            if (cloneAsMhdk == null)
+                                                Right(listOf(includeAction))
+                                            else
+                                                Right(listOf(includeAction, cloneMHDK(sourceRowIndex, localDescription, fctReference)))
+                                        }
+                                    }
+                                }
+                            }
+
+                        NZRowAction.Exclude -> Right(listOf(FoodAction.NoAction))
+                    }
                 }
             }
     }
@@ -121,7 +172,7 @@ object DeriveLocaleNZCsvParser {
 
         csvRows.forEachIndexed { index, row ->
             when (val rowResult = parseRow(index + 1, row)) {
-                is Either.Right -> actions.add(rowResult.b)
+                is Either.Right -> actions.addAll(rowResult.b)
                 is Either.Left -> errors.add(rowResult.a)
             }
         }
