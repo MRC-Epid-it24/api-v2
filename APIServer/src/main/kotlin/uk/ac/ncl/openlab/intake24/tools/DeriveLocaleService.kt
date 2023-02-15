@@ -27,7 +27,7 @@ class DeriveLocaleService @Inject() constructor(
 
         return (yearDigits + englishDescription.filter { it.isLetterOrDigit() || it.isWhitespace() }
             .split(Pattern.compile("\\s+"))
-            .joinToString("") { it.take(2).toUpperCase() })
+            .joinToString("") { it.take(1).toUpperCase() })
             .take(8)
             .padEnd(4, 'X')
     }
@@ -113,7 +113,10 @@ class DeriveLocaleService @Inject() constructor(
                 throw RuntimeException("Failed to produce unique code for $englishDescription in 100 attempts (last attempted code: $candidate)")
             else {
                 if (existing.contains(candidate)) {
-                    logger.debug("Tried $candidate, already taken")
+                    logger.debug("$candidate already used")
+                    findUnique(attemptsLeft - 1, deduplicateCode(candidate))
+                } else if (foodsService.getDuplicateCodes(setOf(candidate)).size == 1) {
+                    logger.debug("$candidate exists in food database")
                     findUnique(attemptsLeft - 1, deduplicateCode(candidate))
                 } else {
                     logger.debug("$candidate is unique")
@@ -121,7 +124,6 @@ class DeriveLocaleService @Inject() constructor(
                 }
             }
         }
-
 
         val code = findUnique()
         existing.add(code)
