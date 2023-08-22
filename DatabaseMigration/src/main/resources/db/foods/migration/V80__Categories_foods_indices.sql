@@ -1,0 +1,3 @@
+CREATE INDEX categories_local_simple_local_description_idx ON categories_local (simple_local_description);
+
+CREATE INDEX foods_local_simple_local_description_idx ON foods_local (simple_local_description);
